@@ -90,8 +90,6 @@ def submit_saga_job(job_description, service):
 
         # create an SSH context and populate it with our SSH details.
 
-        print("creating the context")
-
         ctx = saga.Context("UserPass")
         ctx.user_id = service['username']
         ctx.user_pass = service['user_pass']
@@ -171,7 +169,6 @@ def copy_remote_directory_to_local(remote_dir, local_job_dir):
 
     for f in remote_dir.list():
         if remote_dir.is_file(f):
-            print("copying file {0} to {1}".format(f, local_job_dir))
             outfiletarget = 'file://localhost/' + local_job_dir
             remote_dir.copy(f, outfiletarget)
         else:

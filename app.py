@@ -26,7 +26,7 @@ from werkzeug.utils import secure_filename
 scheduler = BackgroundScheduler()
 
 
-app = Flask(__name__, static_url_path='/home/ubuntu/PycharmProjects/compbiomed-portal/static')
+app = Flask(__name__, static_url_path='/home/ubuntu/PycharmProjects/hemelb-hoff/static')
 app.config.from_pyfile('config.py')
 
 
@@ -185,16 +185,12 @@ class RoleModelView(sqla.ModelView):
 
 
 
-class TestJobFormView(BaseView):
-    @expose('/')
-    def index(self):
-        return self.render('test_form.html')
+
 
 
 # Add administrative views here
 admin.add_view(RoleModelView(Role, db.session))
 admin.add_view(UserModelView(User, db.session))
-admin.add_view(TestJobFormView(name='Test Job', category="Test", endpoint='test-job'))
 admin.add_view(ModelView(JobModel, db.session))
 
 
@@ -287,17 +283,12 @@ def get_job_description(id):
 @app.route('/jobs/<id>/submit',  methods=['POST'])
 @login_required
 def submit_job(id):
-    print "looking for job"
+
     cmd = "SELECT * FROM JOB WHERE local_job_id=:local_job_id"
     result = db.engine.execute(text(cmd), local_job_id=id).fetchone()
-    print result
 
     if result['state'] != "NEW":
         abort("inconsistent state", 500)
-
-    print result['state']
-
-    print "building job description"
     jd = {}
     jd['local_job_id'] = result['local_job_id']
     jd['name'] = result['name']
@@ -326,7 +317,7 @@ def submit_job(id):
         # update database
         cmd = "UPDATE JOB SET state=:state, remote_job_id=:remote_job_id WHERE local_job_id=:local_job_id"
         db.engine.execute(text(cmd), state="SUBMITTED", remote_job_id=remote_job_id, local_job_id=id)
-        return 200, "Job submitted"
+        return 'Submitted', 200, {'Content-Type': 'text/plain'}
     else:
         abort(500, "error submitting job")
 
@@ -343,7 +334,8 @@ def add_file_to_job(id):
     for f in request.files:
         file = request.files[f]
         file.save(os.path.join(INPUT_STAGING_AREA, local_job_id, secure_filename(f)))
-    return "OK"
+
+    return 'Success', 200, {'Content-Type': 'text/plain'}
 
 @app.route('/jobs/<id>/files',  methods=['GET'])
 @login_required

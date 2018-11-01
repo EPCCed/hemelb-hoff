@@ -9,6 +9,7 @@ DATABASE_FILE = 'compbiomed'
 # ie no table drops or creation
 SQLALCHEMY_DATABASE_URI = 'mysql://web:web@localhost/' + DATABASE_FILE
 
+
 # Application logging file name
 APP_LOGFILE = '/home/ubuntu/foo.log'
 

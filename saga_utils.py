@@ -249,9 +249,20 @@ def cleanup_directory(remote_dir, service):
     session.add_context(ctx)
     remote_dir = saga.filesystem.Directory(service['file_url'] + remote_dir, session=session)
     for f in remote_dir.list():
-        remote_dir.remove(f)
-    # currently the library does not let us remove remote directories
-    #remote_dir.remove()
+        if remote_dir.is_file(f):
+            remote_dir.remove(f)
+        else:
+            cleanup_subdir(remote_dir.open_dir(f))
+
+
+def cleanup_subdir(dir):
+    for f in dir.list():
+        if dir.is_file(f):
+            dir.remove(f)
+        else:
+            cleanup_subdir(dir.open_dir(f))
+
+
 
 
 def main():

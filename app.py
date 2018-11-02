@@ -1,27 +1,31 @@
 from flask import Flask, url_for
 from flask_admin import Admin
 from config import SECRET_KEY, SQLALCHEMY_DATABASE_URI, INPUT_STAGING_AREA, OUTPUT_STAGING_AREA
-from utils import queryresult_to_array, queryresult_to_dict
+from utils import queryresult_to_dict
 from flask_sqlalchemy import SQLAlchemy
 from flask_security import Security, SQLAlchemyUserDatastore, \
     UserMixin, RoleMixin, login_required, roles_required, current_user, utils
 from flask_admin import helpers as admin_helpers
 from flask_admin.contrib import sqla
-from flask import Flask, url_for, redirect, render_template, request, abort
+from flask import Flask, url_for, redirect, request, abort
 from wtforms import StringField, PasswordField
 from flask_login import current_user
 from flask_security.forms import RegisterForm
 from sqlalchemy.sql import text
 from flask import jsonify
 import uuid
-from flask_admin import BaseView, expose
 from flask_admin.contrib.sqla import ModelView
 import os
 import saga_utils
 from flask import send_from_directory
 from apscheduler.schedulers.background import BackgroundScheduler
-from saga_utils import stage_output_files
+from saga_utils import stage_output_files, cleanup_directory
 from werkzeug.utils import secure_filename
+
+# role definitions
+SUPERUSER_ROLE = 'superuser'
+POWERUSER_ROLE = 'poweruser'
+
 
 scheduler = BackgroundScheduler()
 
@@ -198,9 +202,15 @@ admin.add_view(ModelView(JobModel, db.session))
 @app.route('/jobs')
 @login_required
 def list_jobs():
-    user_id = current_user.get_id()
-    cmd = 'SELECT local_job_id, name, state FROM JOB WHERE user_id = :user_id'
-    result = db.engine.execute(text(cmd), user_id=current_user.get_id())
+    # normal users can only see their own jobs
+    # super users and power users can see all jobs
+    result = None
+    if current_user.has_roles(SUPERUSER_ROLE) or current_user.has_role(POWERUSER_ROLE):
+        cmd = 'SELECT local_job_id, name, state FROM JOB ORDER BY created'
+        result = db.engine.execute(text(cmd))
+    else:
+        cmd = 'SELECT local_job_id, name, state FROM JOB WHERE user_id = :user_id'
+        result = db.engine.execute(text(cmd), user_id=current_user.get_id())
     return jsonify(queryresult_to_dict({'local_job_id','name','state'}, result))
 
 @app.route('/jobs',  methods=['POST'])
@@ -252,18 +262,35 @@ def create_new_job():
 @app.route('/job/<id>/state',  methods=['GET'])
 @login_required
 def get_job_state(id):
-    cmd = "SELECT state FROM JOB WHERE local_job_id=:local_job_id"
-    result = db.engine.execute(text(cmd), local_job_id = id)
-    state = result.fetchone()['state']
+    # normal users can only see information about jobs they own
+    # power and superusers can see everything
+    cmd = "SELECT state, user_id FROM JOB WHERE local_job_id=:local_job_id"
+    result = db.engine.execute(text(cmd), local_job_id = id).fetchone()
+    state = result['state']
+    owner = result['user_id']
+
+    if int(owner) != int(current_user.get_id()):
+        if not (current_user.has_role(POWERUSER_ROLE) or current_user.has_role(SUPERUSER_ROLE)):
+            abort(403)
+
     return jsonify(state)
 
 
 @app.route('/job/<id>',  methods=['GET'])
 @login_required
 def get_job_description(id):
+    # normal users can only see information about jobs they own
+    # power and superusers can see everything
+
     cmd = "SELECT * FROM JOB WHERE local_job_id=:local_job_id"
     result = db.engine.execute(text(cmd), local_job_id = id)
     job_record = result.fetchone()
+
+    if int(job_record['user_id']) != int(current_user.get_id()):
+        if not (current_user.has_role(POWERUSER_ROLE) or current_user.has_role(SUPERUSER_ROLE)):
+            abort(403)
+
+
     jd = {}
     jd["name"] = job_record['name']
     jd["executable"] = job_record['executable']
@@ -284,8 +311,13 @@ def get_job_description(id):
 @login_required
 def submit_job(id):
 
+    # only the owner of a job can submit it
+
     cmd = "SELECT * FROM JOB WHERE local_job_id=:local_job_id"
     result = db.engine.execute(text(cmd), local_job_id=id).fetchone()
+
+    if(int(result['user_id']) != int(current_user.get_id())):
+        abort(403)
 
     if result['state'] != "NEW":
         abort("inconsistent state", 500)
@@ -326,11 +358,16 @@ def submit_job(id):
 @login_required
 def add_file_to_job(id):
     # first check the job exists
-    cmd = "SELECT local_job_id FROM JOB WHERE local_job_id=:local_job_id"
+    cmd = "SELECT local_job_id, user_id FROM JOB WHERE local_job_id=:local_job_id"
     result = db.engine.execute(text(cmd), local_job_id=id)
-    local_job_id = result.fetchone()['local_job_id']
-    if (local_job_id != id):
+    r = result.fetchone()
+    if r is None:
         abort(404)
+    local_job_id = r['local_job_id']
+    user_id = r['user_id']
+    if int(r['user_id']) != int(current_user.get_id()):
+        abort(403)
+
     for f in request.files:
         file = request.files[f]
         file.save(os.path.join(INPUT_STAGING_AREA, local_job_id, secure_filename(f)))
@@ -342,11 +379,18 @@ def add_file_to_job(id):
 def get_job_output_file_list(id):
 
     # quickly check if the job id is real
-    cmd = "SELECT local_job_id FROM JOB WHERE local_job_id=:local_job_id"
+    cmd = "SELECT local_job_id, user_id FROM JOB WHERE local_job_id=:local_job_id"
     result = db.engine.execute(text(cmd), local_job_id=id)
-    local_job_id = result.fetchone()['local_job_id']
-    if (local_job_id != id):
+    r = result.fetchone()
+    if r is None:
         abort(404)
+    local_job_id = r['local_job_id']
+    user_id = r['user_id']
+
+    # normal users can only see their own jobs
+    if int(user_id) != int(current_user.get_id()):
+        if not ( current_user.has_role(SUPERUSER_ROLE) or current_user.has_role(POWERUSER_ROLE)):
+            abort(403)
 
     # list the files in the job's output directory
     # in the case of Azure we would list the output storage container
@@ -369,22 +413,26 @@ def get_job_output_file_list(id):
 def get_job_output_file(job_id, path):
 
     # quickly check if the job id is real
-    cmd = "SELECT local_job_id FROM JOB WHERE local_job_id=:local_job_id"
+    cmd = "SELECT local_job_id, user_id FROM JOB WHERE local_job_id=:local_job_id"
     result = db.engine.execute(text(cmd), local_job_id=job_id)
-    local_job_id = result.fetchone()['local_job_id']
-    if (local_job_id != job_id):
+    r = result.fetchone()
+    if r is None:
         abort(404)
+    local_job_id = r['local_job_id']
+    user_id = r['user_id']
 
-    # sanitize the filename just in case
-    safe_filename = secure_filename(path)
+    if int(user_id) != int(current_user.get_id()):
+        abort(403)
 
     # check if the requested file exists
     # we need a check to see if we are listing normal files or redirecting to Azure - TODO
-    exists = os.path.isfile(os.path.join(OUTPUT_STAGING_AREA, local_job_id, safe_filename))
+
+
+    exists = os.path.isfile(os.path.join(OUTPUT_STAGING_AREA, local_job_id, path))
     if not exists:
         abort(404)
 
-    return send_from_directory(directory=os.path.join(OUTPUT_STAGING_AREA, local_job_id), filename=safe_filename)
+    return send_from_directory(directory=os.path.join(OUTPUT_STAGING_AREA, local_job_id), filename=path)
 
 
 @app.route('/jobs/<id>', methods=['DELETE'])
@@ -476,6 +524,7 @@ def retrieve_output_files(job_id):
     try:
         REMOTE_WORKING_DIR = os.path.join(service['working_directory'], str(job_id))
         stage_output_files(REMOTE_WORKING_DIR, local_file_dir, service)
+        cleanup_directory(REMOTE_WORKING_DIR, service)
         # flag the job as retrieved
         cmd = "UPDATE JOB SET retrieved=1 WHERE local_job_id=:local_job_id"
         db.engine.execute(text(cmd), local_job_id=job_id)

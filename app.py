@@ -21,6 +21,7 @@ from flask import send_from_directory
 from apscheduler.schedulers.background import BackgroundScheduler
 from saga_utils import stage_output_files, cleanup_directory
 from werkzeug.utils import secure_filename
+import ast
 
 # role definitions
 SUPERUSER_ROLE = 'superuser'
@@ -229,12 +230,19 @@ def create_new_job():
 
     # look for additional information, will set as NULL if not in payload
     arguments = payload.get('arguments')
-    env = payload.get('env')
     num_total_cpus = payload.get('num_total_cpus')
     total_physical_memory = payload.get('total_physical_memory')
     wallclock_limit = payload.get('wallclock_limit')
     project = payload.get('project')
     queue = payload.get('queue')
+
+    # sanity check env - must be able to turn it into a dict
+    env = payload.get('env')
+    if env is not None:
+        try:
+            sanitized_env = ast.literal_eval(env)
+        except Exception as e:
+            abort(500, "Cannot convert env to a dict")
 
 
     job_uuid = str(uuid.uuid4())
@@ -329,12 +337,18 @@ def submit_job(id):
 
     # look for additional information, will set as NULL if not in payload
     jd['arguments'] = result['arguments']
-    jd['env'] = result['env']
     jd['num_total_cpus'] = result['num_total_cpus']
     jd['total_physical_memory'] = result['total_physical_memory']
     jd['wallclock_limit'] = result['wallclock_limit']
     jd['project'] = result['project']
     jd['queue'] = result['queue']
+
+    # if env is specified, we need to turn the arguments into a dict
+    if result['env'] is not None:
+        try:
+            jd['env'] = ast.literal_eval(result['env'])
+        except Exception as e:
+            abort(500, "couldn't convert env parameter to a dict")
 
     local_input_file_dir = os.path.join(INPUT_STAGING_AREA, jd['local_job_id'])
 

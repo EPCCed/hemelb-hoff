@@ -22,6 +22,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from saga_utils import stage_output_files, cleanup_directory
 from werkzeug.utils import secure_filename
 import ast
+import shutil
 
 # role definitions
 SUPERUSER_ROLE = 'superuser'
@@ -244,7 +245,6 @@ def create_new_job():
         except Exception as e:
             abort(500, "Cannot convert env to a dict")
 
-
     job_uuid = str(uuid.uuid4())
 
     # look up the service name to get the correct id
@@ -267,7 +267,7 @@ def create_new_job():
 
     return str(job_uuid)
 
-@app.route('/job/<id>/state',  methods=['GET'])
+@app.route('/jobs/<id>/state',  methods=['GET'])
 @login_required
 def get_job_state(id):
     # normal users can only see information about jobs they own
@@ -281,10 +281,10 @@ def get_job_state(id):
         if not (current_user.has_role(POWERUSER_ROLE) or current_user.has_role(SUPERUSER_ROLE)):
             abort(403)
 
-    return jsonify(state)
+    return state, 200, {'Content-Type': 'text/plain'}
 
 
-@app.route('/job/<id>',  methods=['GET'])
+@app.route('/jobs/<id>',  methods=['GET'])
 @login_required
 def get_job_description(id):
     # normal users can only see information about jobs they own
@@ -336,7 +336,11 @@ def submit_job(id):
     jd['executable'] = result['executable']
 
     # look for additional information, will set as NULL if not in payload
-    jd['arguments'] = result['arguments']
+
+    if result['arguments'] is not None:
+        argument_list = result['arguments'].split(',')
+        jd['arguments'] = argument_list
+
     jd['num_total_cpus'] = result['num_total_cpus']
     jd['total_physical_memory'] = result['total_physical_memory']
     jd['wallclock_limit'] = result['wallclock_limit']
@@ -347,6 +351,7 @@ def submit_job(id):
     if result['env'] is not None:
         try:
             jd['env'] = ast.literal_eval(result['env'])
+            print type(jd['env']), jd['env']
         except Exception as e:
             abort(500, "couldn't convert env parameter to a dict")
 
@@ -452,7 +457,44 @@ def get_job_output_file(job_id, path):
 @app.route('/jobs/<id>', methods=['DELETE'])
 @login_required
 def delete_job(id):
-    return 'delete_job'
+
+    # check ownership of the job
+    cmd = "SELECT user_id, service_id, remote_job_id, state FROM JOB WHERE local_job_id = :local_job_id"
+    result = db.engine.execute(text(cmd), local_job_id = id)
+    r = result.fetchone()
+    if r is None:
+        abort(404)
+
+    if int(r['user_id']) != int(current_user.get_id()):
+        if not ( current_user.has_role(SUPERUSER_ROLE)):
+            abort(403)
+
+    # if the job is already set as deleted, ignore this request
+    if r['state'] == 'DELETED':
+        return 200
+
+    service = get_service(r['service_id'])
+
+    # kill the remote job if still running
+    try:
+        saga_utils.cancel_job(r['remote_job_id'], service)
+    except Exception as e:
+        # TODO logging
+        print e
+
+    # delete any remote files associated with the job
+    REMOTE_WORKING_DIR = os.path.join(service['working_directory'], str(id))
+    cleanup_directory(REMOTE_WORKING_DIR, service)
+
+    # delete any local files associated with the job
+    LOCAL_WORKING_DIR = os.path.join(OUTPUT_STAGING_AREA, str(id))
+    shutil.rmtree(LOCAL_WORKING_DIR)
+
+    # update the job to show as deleted, or remove it from the database?
+    cmd = "UPDATE JOB SET state=:state WHERE local_job_id = :local_job_id"
+    result = db.engine.execute(text(cmd), state="DELETED", local_job_id=id)
+
+
 
 @app.route('/services', methods=['GET'])
 @login_required

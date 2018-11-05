@@ -132,6 +132,14 @@ def submit_saga_job(job_description, service):
         if wallclock_limit is not None:
             jd.wall_time_limit = wallclock_limit
 
+        env = job_description.get('env')
+        if env is not None:
+            jd.environment = env
+
+        arguments = job_description.get('arguments')
+        if arguments is not None:
+            jd.arguments = arguments
+
         # specify where the job's stdout and stderr will go
         jd.output = JOB_STDOUT
         jd.error = JOB_STDERR
@@ -160,6 +168,25 @@ def submit_saga_job(job_description, service):
         print('Backtrace: {}'.format(ex.traceback))
         return -1
 
+
+def cancel_job(job_id, service):
+
+    try:
+        ctx = saga.Context("UserPass")
+        ctx.user_id = service['username']
+        ctx.user_pass = service['user_pass']
+
+        # create a session and pass our context
+        session = saga.Session()
+        session.add_context(ctx)
+
+        js = saga.job.Service(service['scheduler_url'], session)
+        job = js.get_job(job_id)
+        job.cancel()
+        js.close()
+    except Exception as e:
+        # TODO logging
+        print(e)
 
 
 def copy_remote_directory_to_local(remote_dir, local_job_dir):

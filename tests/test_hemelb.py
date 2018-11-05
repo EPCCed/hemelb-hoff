@@ -1,5 +1,5 @@
 import requests
-
+import time
 LOGIN_URL = 'http://127.0.0.1:5000/admin/login/'
 
 
@@ -15,7 +15,7 @@ payload['executable'] = "/lustre/home/d411/malcolmi/test_submit/submit.sh"
 payload['num_total_cpus'] = 36
 payload['wallclock_limit'] = 5
 payload['project'] = "d411-polnet"
-payload['env'] = "{'foo':'bar','hello':'world'}"
+payload['arguments'] = "david, hassell, hoff"
 
 small_files = { 'config.gmy': open('/home/ubuntu/config.gmy','rb'),
           'config.xml': open('/home/ubuntu/config.xml','rb')
@@ -44,4 +44,24 @@ with requests.Session() as s:
     p = s.post(post_url)
     print p.text
 
+    #wait for completion
+    get_url = 'http://127.0.0.1:5000/jobs/' + str(job_id) + "/state"
+    p = s.get(get_url)
+    state = p.content
 
+    while state not in ['Done', 'Failed']:
+        time.sleep(60)
+        p = s.get(get_url)
+        state = p.content
+        print state
+
+    print "deleting job"
+    delete_url = 'http://127.0.0.1:5000/jobs/' + str(job_id)
+    p = s.delete(delete_url)
+    print p.status_code
+
+    print "checking deleted state"
+    get_url = 'http://127.0.0.1:5000/jobs/' + str(job_id) + "/state"
+    p = s.get(get_url)
+    state = p.content
+    print "final state is " + state

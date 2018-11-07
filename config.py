@@ -41,10 +41,18 @@ SECURITY_CHANGEABLE = True
 WTF_CSRF_ENABLED = False
 
 # Location for holding input file before staging
-INPUT_STAGING_AREA = '/home/ubuntu/jobs'
+INPUT_STAGING_AREA = '/home/ubuntu/jobs/input'
 
 # Location for holding output files
-OUTPUT_STAGING_AREA = '/home/ubuntu/jobs'
+OUTPUT_STAGING_AREA = '/home/ubuntu/jobs/output'
+
+# local for holding input filesets
+INPUTSET_STAGING_AREA = '/home/ubuntu/inputsets'
+
 
 # Location for temnporary files
 TEMP_FOLDER = "/home/ubuntu/temp"
+
+# maximum number of jobs a user may have.
+# DELETED jobs are not counted
+MAX_USER_JOBS = 10

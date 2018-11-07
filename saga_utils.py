@@ -132,9 +132,9 @@ def submit_saga_job(job_description, service):
         if wallclock_limit is not None:
             jd.wall_time_limit = wallclock_limit
 
-        env = job_description.get('env')
-        if env is not None:
-            jd.environment = env
+        #env = job_description.get('env')
+        #if env is not None:
+        #    jd.environment = env
 
         arguments = job_description.get('arguments')
         if arguments is not None:
@@ -185,8 +185,9 @@ def cancel_job(job_id, service):
         job.cancel()
         js.close()
     except Exception as e:
-        # TODO logging
-        print(e)
+        # cancelling a job could fail for a number of reasons, but most likely because the job is already complete
+        # ignore the moment, but do some logging?
+        pass
 
 
 def copy_remote_directory_to_local(remote_dir, local_job_dir):
@@ -263,29 +264,42 @@ def get_saga_job_state(job_id, service):
 
 
 def cleanup_directory(remote_dir, service):
-    ctx = saga.Context("UserPass")
-    ctx.user_id = service['username']
-    ctx.user_pass = service['user_pass']
 
-    # create a session and pass our context
-    session = saga.Session()
-    session.add_context(ctx)
+    try:
+        ctx = saga.Context("UserPass")
+        ctx.user_id = service['username']
+        ctx.user_pass = service['user_pass']
 
-    # create a session and pass our context
-    session = saga.Session()
-    session.add_context(ctx)
-    remote_dir = saga.filesystem.Directory(service['file_url'] + remote_dir, session=session)
-    for f in remote_dir.list():
-        if remote_dir.is_file(f):
-            remote_dir.remove(f)
-        else:
-            cleanup_subdir(remote_dir.open_dir(f))
+        # create a session and pass our context
+        session = saga.Session()
+        session.add_context(ctx)
+
+        # create a session and pass our context
+        session = saga.Session()
+        session.add_context(ctx)
+        remote_dir = saga.filesystem.Directory(service['file_url'] + remote_dir, session=session)
+        for f in remote_dir.list():
+            if remote_dir.is_file(f):
+                try:
+                    remote_dir.remove(f)
+                except Exception as e:
+                    # logging?
+                    pass
+            else:
+                cleanup_subdir(remote_dir.open_dir(f))
+    except Exception as e:
+        # TODO logging
+        pass
 
 
 def cleanup_subdir(dir):
     for f in dir.list():
         if dir.is_file(f):
-            dir.remove(f)
+            try:
+                dir.remove(f)
+            except Exception as e:
+                # logging?
+                pass
         else:
             cleanup_subdir(dir.open_dir(f))
 

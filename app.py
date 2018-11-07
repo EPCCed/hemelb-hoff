@@ -1,7 +1,7 @@
-from flask import Flask, url_for
+
 from flask_admin import Admin
-from config import SECRET_KEY, SQLALCHEMY_DATABASE_URI, INPUT_STAGING_AREA, OUTPUT_STAGING_AREA
-from utils import queryresult_to_dict
+from config import SECRET_KEY, SQLALCHEMY_DATABASE_URI, INPUT_STAGING_AREA, OUTPUT_STAGING_AREA, INPUTSET_STAGING_AREA, MAX_USER_JOBS
+from utils import queryresult_to_dict, queryresult_to_array
 from flask_sqlalchemy import SQLAlchemy
 from flask_security import Security, SQLAlchemyUserDatastore, \
     UserMixin, RoleMixin, login_required, roles_required, current_user, utils
@@ -207,17 +207,27 @@ def list_jobs():
     # normal users can only see their own jobs
     # super users and power users can see all jobs
     result = None
-    if current_user.has_roles(SUPERUSER_ROLE) or current_user.has_role(POWERUSER_ROLE):
+    if current_user.has_role(SUPERUSER_ROLE) or current_user.has_role(POWERUSER_ROLE):
         cmd = 'SELECT local_job_id, name, state FROM JOB ORDER BY created'
         result = db.engine.execute(text(cmd))
     else:
         cmd = 'SELECT local_job_id, name, state FROM JOB WHERE user_id = :user_id'
         result = db.engine.execute(text(cmd), user_id=current_user.get_id())
-    return jsonify(queryresult_to_dict({'local_job_id','name','state'}, result))
+
+    return jsonify(queryresult_to_array({'local_job_id','name','state'}, result))
 
 @app.route('/jobs',  methods=['POST'])
 @login_required
 def create_new_job():
+
+    # check the user is within their limit
+    cmd = "SELECT COUNT(id) AS TOTAL_JOBS FROM JOB WHERE user_id=:user_id and state!='DELETED'"
+    user_id = current_user.get_id()
+    result = db.engine.execute(text(cmd), user_id=user_id)
+    total_jobs = int(result.fetchone()['TOTAL_JOBS'])
+    if total_jobs >= MAX_USER_JOBS:
+        abort(500, "Maximum number of user jobs exceeded - delete some jobs")
+
     # look for json job description in payload
 
     payload = request.json
@@ -238,12 +248,12 @@ def create_new_job():
     queue = payload.get('queue')
 
     # sanity check env - must be able to turn it into a dict
-    env = payload.get('env')
-    if env is not None:
-        try:
-            sanitized_env = ast.literal_eval(env)
-        except Exception as e:
-            abort(500, "Cannot convert env to a dict")
+    #env = payload.get('env')
+    #if env is not None:
+    #    try:
+    #        sanitized_env = ast.literal_eval(env)
+    #    except Exception as e:
+    #        abort(500, "Cannot convert env to a dict")
 
     job_uuid = str(uuid.uuid4())
 
@@ -251,14 +261,13 @@ def create_new_job():
     cmd = 'SELECT id FROM SERVICE where name=:name'
     result = db.engine.execute(text(cmd), name=service_name)
     service_id = result.fetchone()['id']
-    print service_id
 
     user_id = current_user.get_id()
 
-    cmd = 'INSERT INTO JOB(user_id, name, executable, service_id, local_job_id, arguments, env, num_total_cpus, total_physical_memory, wallclock_limit, project, queue) \
-        VALUES(:user_id, :name, :executable, :service_id, :local_job_id, :arguments, :env, :num_total_cpus, :total_physical_memory, :wallclock_limit, :project, :queue )'
+    cmd = 'INSERT INTO JOB(user_id, name, executable, service_id, local_job_id, arguments, num_total_cpus, total_physical_memory, wallclock_limit, project, queue) \
+        VALUES(:user_id, :name, :executable, :service_id, :local_job_id, :arguments, :num_total_cpus, :total_physical_memory, :wallclock_limit, :project, :queue )'
     db.engine.execute(text(cmd), user_id=user_id, name=job_name, executable=executable, service_id=service_id, local_job_id=job_uuid,
-                      arguments=arguments, env=env, num_total_cpus=num_total_cpus, total_physical_memory=total_physical_memory,
+                      arguments=arguments, num_total_cpus=num_total_cpus, total_physical_memory=total_physical_memory,
                       wallclock_limit=wallclock_limit, project=project, queue=queue)
 
     # create a staging area for this job
@@ -306,12 +315,13 @@ def get_job_description(id):
     jd["local_job_id"] = job_record["local_job_id"]
     jd["remote_job_id"] = job_record["remote_job_id"]
     jd["arguments"] = job_record['arguments']
-    jd["env"] = job_record['env']
+    #jd["env"] = job_record['env']
     jd["num_total_cpus"] = job_record["num_total_cpus"]
     jd["total_physical_memory"] = job_record['total_physical_memory']
     jd["wallclock_limit"] = job_record['wallclock_limit']
     jd["project"] = job_record["project"]
     jd["queue"] = job_record["queue"]
+    jd['input_set_id'] = job_record['input_set_id']
     return jsonify(jd)
 
 
@@ -348,20 +358,26 @@ def submit_job(id):
     jd['queue'] = result['queue']
 
     # if env is specified, we need to turn the arguments into a dict
-    if result['env'] is not None:
-        try:
-            jd['env'] = ast.literal_eval(result['env'])
-            print type(jd['env']), jd['env']
-        except Exception as e:
-            abort(500, "couldn't convert env parameter to a dict")
+    #if result['env'] is not None:
+    #    try:
+    #        jd['env'] = ast.literal_eval(result['env'])
+    #        print type(jd['env']), jd['env']
+    #    except Exception as e:
+    #        abort(500, "couldn't convert env parameter to a dict")
 
     local_input_file_dir = os.path.join(INPUT_STAGING_AREA, jd['local_job_id'])
 
     service_id = result['service_id']
     service = get_service(service_id)
 
+    if result['input_set_id'] is not None:
+        input_set_dir = os.path.join(INPUTSET_STAGING_AREA, result['input_set_id'])
+        saga_utils.stage_input_files(id, input_set_dir, service)
+
+    # stage any input files uploaded for this job
     saga_utils.stage_input_files(id, local_input_file_dir, service)
 
+    # kick off the job and get an id for tracking the remote job state
     remote_job_id = saga_utils.submit_saga_job(jd, service)
 
     if remote_job_id != -1:
@@ -420,8 +436,6 @@ def get_job_output_file_list(id):
         for name in files:
             filelist.append( os.path.join(path, name).replace(base_dir+"/",''))
 
-
-    #dirlist = os.listdir(os.path.join(OUTPUT_STAGING_AREA, local_job_id))
     return jsonify(filelist)
 
 
@@ -458,42 +472,60 @@ def get_job_output_file(job_id, path):
 @login_required
 def delete_job(id):
 
-    # check ownership of the job
-    cmd = "SELECT user_id, service_id, remote_job_id, state FROM JOB WHERE local_job_id = :local_job_id"
-    result = db.engine.execute(text(cmd), local_job_id = id)
-    r = result.fetchone()
-    if r is None:
-        abort(404)
-
-    if int(r['user_id']) != int(current_user.get_id()):
-        if not ( current_user.has_role(SUPERUSER_ROLE)):
-            abort(403)
-
-    # if the job is already set as deleted, ignore this request
-    if r['state'] == 'DELETED':
-        return 200
-
-    service = get_service(r['service_id'])
-
-    # kill the remote job if still running
     try:
-        saga_utils.cancel_job(r['remote_job_id'], service)
+
+        # check ownership of the job
+        cmd = "SELECT user_id, service_id, remote_job_id, state FROM JOB WHERE local_job_id = :local_job_id"
+        result = db.engine.execute(text(cmd), local_job_id = id)
+        r = result.fetchone()
+        if r is None:
+            abort(404)
+
+        if int(r['user_id']) != int(current_user.get_id()):
+            if not ( current_user.has_role(SUPERUSER_ROLE)):
+                abort(403)
+
+        # if the job is already set as deleted, ignore this request
+        if r['state'] == 'DELETED':
+            return 200
+
+        service = get_service(r['service_id'])
+
+        # kill the remote job if still running
+
+        remote_job_id = r['remote_job_id']
+
+        if remote_job_id is not None:
+            try:
+                saga_utils.cancel_job(r[remote_job_id], service)
+
+            except Exception as e:
+                # TODO logging
+                pass
+
+        # delete any remote files associated with this job
+        REMOTE_WORKING_DIR = os.path.join(service['working_directory'], str(id))
+        cleanup_directory(REMOTE_WORKING_DIR, service)
+
+        # delete any local files associated with the job
+
+        LOCAL_OUTPUT_DIR = os.path.join(OUTPUT_STAGING_AREA, str(id))
+        if os.path.exists(LOCAL_OUTPUT_DIR):
+            shutil.rmtree(LOCAL_OUTPUT_DIR)
+
+        # delete any local files associated with the job
+        LOCAL_INPUT_DIR = os.path.join(INPUT_STAGING_AREA, str(id))
+        if os.path.exists(LOCAL_INPUT_DIR):
+            shutil.rmtree(LOCAL_INPUT_DIR)
+
+        # update the job to show as deleted, or remove it from the database?
+        cmd = "UPDATE JOB SET state=:state WHERE local_job_id = :local_job_id"
+        result = db.engine.execute(text(cmd), state="DELETED", local_job_id=id)
+
+        return "Deleted", 200, {'Content-Type': 'text/plain'}
+
     except Exception as e:
-        # TODO logging
-        print e
-
-    # delete any remote files associated with the job
-    REMOTE_WORKING_DIR = os.path.join(service['working_directory'], str(id))
-    cleanup_directory(REMOTE_WORKING_DIR, service)
-
-    # delete any local files associated with the job
-    LOCAL_WORKING_DIR = os.path.join(OUTPUT_STAGING_AREA, str(id))
-    shutil.rmtree(LOCAL_WORKING_DIR)
-
-    # update the job to show as deleted, or remove it from the database?
-    cmd = "UPDATE JOB SET state=:state WHERE local_job_id = :local_job_id"
-    result = db.engine.execute(text(cmd), state="DELETED", local_job_id=id)
-
+        abort(500, e.message)
 
 
 @app.route('/services', methods=['GET'])
@@ -503,21 +535,120 @@ def list_resources():
     result = db.engine.execute(text(cmd))
     return jsonify(queryresult_to_dict({'name', 'url'}, result))
 
+
 @app.route('/inputsets', methods=['POST'])
 @login_required
 def create_input_set():
-    return 'create_input_set'
+
+    try:
+        # request must contain a name
+        name = request.form.get("name", None)
+        if name is None:
+            abort(500, "request must contain a name")
+
+        # name must be unique, do an explicit check
+        cmd = "SELECT id FROM INPUT_SET WHERE name=:name"
+        result = db.engine.execute(text(cmd), name=name)
+        r = result.fetchone()
+        if r is not None:
+            abort(500, "name already in use")
+
+        user_id = current_user.get_id()
+
+        cmd = "INSERT INTO INPUT_SET (user_id, name) VALUES(:user_id, :name)"
+        db.engine.execute(text(cmd), user_id=user_id, name=name)
+
+        # return the id of the new record
+        cmd = "SELECT id FROM INPUT_SET WHERE name=:name"
+        result = db.engine.execute(text(cmd), name=name)
+
+        r = result.fetchone()
+        if r is None:
+            abort(500)
+
+        id = r['id']
+        return str(id), 200, {'Content-Type': 'text/plain'}
+
+    except Exception as e:
+        abort(500, e.message)
+
+
 
 @app.route('/inputsets', methods=['GET'])
 @login_required
 def list_input_sets():
-    return 'list_input_set'
+    cmd = 'SELECT name, id FROM INPUT_SET'
+    result = db.engine.execute(text(cmd))
+    return jsonify(queryresult_to_dict({'name', 'id'}, result))
 
 
-@app.route('/test/<id>', methods=['GET'])
+
+@app.route('/inputsets/<id>/hash', methods=['GET'])
 @login_required
-def do_test(id):
-    return submit_job(id)
+def get_inputset_hash(id):
+    abort(501)
+
+
+
+@app.route('/inputsets/<id>/files',  methods=['POST'])
+@login_required
+def add_file_to_inputset(id):
+    # first check the input set exists
+    cmd = "SELECT id, user_id FROM INPUT_SET WHERE id=:id"
+    result = db.engine.execute(text(cmd), id=id)
+    r = result.fetchone()
+    if r is None:
+        abort(404)
+
+    user_id = r['user_id']
+
+    if int(user_id) != int(current_user.get_id()):
+        if not ( current_user.has_role(SUPERUSER_ROLE) or current_user.has_role(POWERUSER_ROLE)):
+            abort(403)
+
+    # check the directory exists for the input set
+    file_dir = os.path.join(INPUTSET_STAGING_AREA, id)
+    if not os.path.exists(file_dir):
+        os.makedirs(file_dir)
+
+    for f in request.files:
+        file = request.files[f]
+        file.save(os.path.join(file_dir, secure_filename(f)))
+
+    return 'Success', 200, {'Content-Type': 'text/plain'}
+
+@app.route('/inputsets/<id>/files',  methods=['GET'])
+@login_required
+def get_inputset_file_list(id):
+
+    # quickly check if the job id is real
+    cmd = "SELECT id, user_id FROM INPUT_SET WHERE id=:id"
+    result = db.engine.execute(text(cmd), id=id)
+    r = result.fetchone()
+    if r is None:
+        abort(404)
+    user_id = r['user_id']
+
+    # normal users can only see their own jobs
+    if int(user_id) != int(current_user.get_id()):
+        if not ( current_user.has_role(SUPERUSER_ROLE) or current_user.has_role(POWERUSER_ROLE)):
+            abort(403)
+
+    # list the files in the job's output directory
+    # in the case of Azure we would list the output storage container
+
+    filelist = []
+    base_dir = os.path.join(INPUTSET_STAGING_AREA, id)
+    for path, subdirs, files in os.walk(base_dir):
+        for name in files:
+            filelist.append( os.path.join(path, name).replace(base_dir+"/",''))
+
+
+    #dirlist = os.listdir(os.path.join(OUTPUT_STAGING_AREA, local_job_id))
+    return jsonify(filelist)
+
+
+
 
 
 

@@ -1,7 +1,7 @@
 
 from flask_admin import Admin
 from config import SECRET_KEY, SQLALCHEMY_DATABASE_URI, INPUT_STAGING_AREA, OUTPUT_STAGING_AREA, INPUTSET_STAGING_AREA, MAX_USER_JOBS
-from utils import queryresult_to_dict, queryresult_to_array
+from utils import queryresult_to_dict, queryresult_to_array, compute_hash_for_dir_contents
 from flask_sqlalchemy import SQLAlchemy
 from flask_security import Security, SQLAlchemyUserDatastore, \
     UserMixin, RoleMixin, login_required, roles_required, current_user, utils
@@ -21,7 +21,6 @@ from flask import send_from_directory
 from apscheduler.schedulers.background import BackgroundScheduler
 from saga_utils import stage_output_files, cleanup_directory
 from werkzeug.utils import secure_filename
-import ast
 import shutil
 
 # role definitions
@@ -36,7 +35,7 @@ app = Flask(__name__, static_url_path='/home/ubuntu/PycharmProjects/hemelb-hoff/
 app.config.from_pyfile('config.py')
 
 
-admin = Admin(app, name='Hoff', template_mode='bootstrap3')
+admin = Admin(app, name='Hoff', template_mode='bootstrap3', base_template='master.html',)
 
 # add database connection
 app.config['SECRET_KEY'] = SECRET_KEY
@@ -82,7 +81,9 @@ class JobModel(db.Model):
     __tablename__ = 'JOB'
 
     id = db.Column(db.Integer(), primary_key=True)
+    user_id = db.Column(db.Integer())
     local_job_id = db.Column(db.String(80), unique=True)
+    remote_job_id = db.Column(db.String(80), unique=True)
     name = db.Column(db.String(80))
     executable = db.Column(db.String(255))
     state = db.Column(db.String(80))
@@ -91,6 +92,24 @@ class JobModel(db.Model):
     wallclock_limit = db.Column(db.String(80))
     project = db.Column(db.String(80))
     queue = db.Column(db.String(80))
+    created = db.Column(db.Date())
+    last_modified = db.Column(db.Date())
+
+
+class ReadOnlyModelView(ModelView):
+
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+    def is_accessible(self):
+        if not current_user.is_active or not current_user.is_authenticated:
+            return False
+        return True
+
+    def inaccessible_callback(self, name, **kwargs):
+        # redirect to login page if user doesn't have access
+        return redirect(url_for('security.login', next=request.url))
 
 
 
@@ -197,7 +216,7 @@ class RoleModelView(sqla.ModelView):
 # Add administrative views here
 admin.add_view(RoleModelView(Role, db.session))
 admin.add_view(UserModelView(User, db.session))
-admin.add_view(ModelView(JobModel, db.session))
+admin.add_view(ReadOnlyModelView(JobModel, db.session))
 
 
 # rest endpoint definitions
@@ -531,9 +550,9 @@ def delete_job(id):
 @app.route('/services', methods=['GET'])
 @login_required
 def list_resources():
-    cmd = 'SELECT name, url FROM SERVICE'
+    cmd = 'SELECT name, scheduler_url, file_url FROM SERVICE'
     result = db.engine.execute(text(cmd))
-    return jsonify(queryresult_to_dict({'name', 'url'}, result))
+    return jsonify(queryresult_to_dict({'name', 'scheduler_url', 'file_url'}, result))
 
 
 @app.route('/inputsets', methods=['POST'])
@@ -586,7 +605,22 @@ def list_input_sets():
 @app.route('/inputsets/<id>/hash', methods=['GET'])
 @login_required
 def get_inputset_hash(id):
-    abort(501)
+
+    # check the input set exists
+    cmd = "SELECT id FROM INPUT_SET WHERE id=:id"
+    result = db.engine.execute(text(cmd), id=id)
+    r = result.fetchone()
+    if r is None:
+        abort(404)
+
+    # check the input set directory exists
+    dir = os.path.join(INPUTSET_STAGING_AREA, id)
+    if not os.path.exists(dir):
+        abort(500, "input set directory does not exist")
+
+    hash = compute_hash_for_dir_contents(dir)
+
+    return hash, 200, {'Content-Type': 'text/plain'}
 
 
 
@@ -725,4 +759,5 @@ def retrieve_output_files(job_id):
 scheduler.add_job(refresh_job_state, 'interval', minutes=1)
 scheduler.start()
 
-app.run()
+if __name__ == '__main__':
+    app.run()

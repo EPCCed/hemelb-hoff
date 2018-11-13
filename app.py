@@ -655,7 +655,7 @@ def add_file_to_inputset(id):
 @login_required
 def get_inputset_file_list(id):
 
-    # quickly check if the job id is real
+    # quickly check if the inputset id is real
     cmd = "SELECT id, user_id FROM INPUT_SET WHERE id=:id"
     result = db.engine.execute(text(cmd), id=id)
     r = result.fetchone()
@@ -663,7 +663,7 @@ def get_inputset_file_list(id):
         abort(404)
     user_id = r['user_id']
 
-    # normal users can only see their own jobs
+    # normal users can only see their own assets
     if int(user_id) != int(current_user.get_id()):
         if not ( current_user.has_role(SUPERUSER_ROLE) or current_user.has_role(POWERUSER_ROLE)):
             abort(403)
@@ -678,8 +678,33 @@ def get_inputset_file_list(id):
             filelist.append( os.path.join(path, name).replace(base_dir+"/",''))
 
 
-    #dirlist = os.listdir(os.path.join(OUTPUT_STAGING_AREA, local_job_id))
     return jsonify(filelist)
+
+
+@app.route('/inputsets/<id>/files/<filename>',  methods=['DELETE'])
+@login_required
+def delete_inputset_file(id, filename):
+
+    # quickly check if the inputset id is real
+    cmd = "SELECT id, user_id FROM INPUT_SET WHERE id=:id"
+    result = db.engine.execute(text(cmd), id=id)
+    r = result.fetchone()
+    if r is None:
+        abort(404)
+    user_id = r['user_id']
+
+    # normal users can only see their own assets
+    if int(user_id) != int(current_user.get_id()):
+        if not ( current_user.has_role(SUPERUSER_ROLE) or current_user.has_role(POWERUSER_ROLE)):
+            abort(403)
+
+    # delete the file if it exists, otherwise return a not found
+    filepath = os.path.join(INPUTSET_STAGING_AREA, id, secure_filename(filename))
+    if os.path.exists(filepath):
+        os.remove(filepath)
+        return 'Deleted', 200, {'Content-Type': 'text/plain'}
+    else:
+        abort(404)
 
 
 

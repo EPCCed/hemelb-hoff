@@ -2,21 +2,10 @@ import requests
 import time
 from config import MAX_USER_JOBS
 import uuid
-
-#BASE_URL = "http://127.0.0.1:5000"
-
-BASE_URL = "https://129.215.193.177"
-
-LOGIN_URL = BASE_URL + "/admin/login/"
-JOBS_URL = BASE_URL + "/jobs"
-INPUTSETS_URL = BASE_URL + "/inputsets"
-PEM_CERTIFICATE = "/home/ubuntu/hoff-server.pem"
+from tests.test_params import LOGIN_URL, JOBS_URL, INPUTSETS_URL, PEM_CERTIFICATE
+from tests.test_params import login_credentials
 
 
-params = {
-    'email': "***",
-    'password': "***"
-}
 
 payload = {}
 payload['name'] = "polnet_test"
@@ -26,6 +15,7 @@ payload['num_total_cpus'] = 36
 payload['wallclock_limit'] = 5
 payload['project'] = "d411-polnet"
 payload['arguments'] = "david, hassell, hoff"
+payload['filter'] = "*.+\.dat"
 
 small_files = { 'config.gmy': open('/home/ubuntu/config.gmy','rb'),
           'config.xml': open('/home/ubuntu/config.xml','rb')
@@ -36,46 +26,50 @@ def testJob():
 
     with requests.Session() as s:
 
-        p = s.post(LOGIN_URL, data=params, verify = PEM_CERTIFICATE)
+        p = s.post(LOGIN_URL, data=login_credentials, verify = PEM_CERTIFICATE)
         # print the html returned or something more intelligent to see if it's a successful login page.
-        print p.status_code
+        assert p.status_code == 200
 
         # An authorised request.
         p = s.post(JOBS_URL, json=payload, verify = PEM_CERTIFICATE)
+        assert p.status_code == 200
         job_id = p.content
         print job_id
 
         #upload the small input files
         file_url = JOBS_URL + "/" + str(job_id) + "/files"
         p = s.post(file_url, files=small_files, verify = PEM_CERTIFICATE)
-        print p.status_code
+        assert p.status_code == 200
 
 
         #submit the job
         post_url = JOBS_URL + "/" + str(job_id) + "/submit"
         p = s.post(post_url, verify = PEM_CERTIFICATE)
+        assert p.status_code == 200
         print p.text
 
         #wait for completion
         get_url = JOBS_URL + "/" + str(job_id) + "/state"
         p = s.get(get_url, verify = PEM_CERTIFICATE)
+        assert p.status_code == 200
         state = p.content
 
         while state not in ['Done', 'Failed']:
             time.sleep(60)
             p = s.get(get_url, verify = PEM_CERTIFICATE)
+            assert p.status_code == 200
             state = p.content
             print state
 
-        print "deleting job"
-        delete_url = JOBS_URL + "/" + str(job_id)
-        p = s.delete(delete_url, verify = PEM_CERTIFICATE)
-        print p.status_code
+        #print "deleting job"
+        #delete_url = JOBS_URL + "/" + str(job_id)
+        #p = s.delete(delete_url, verify = PEM_CERTIFICATE)
+        #print p.status_code
 
-        print "checking deleted state"
-        get_url = JOBS_URL + "/" + str(job_id) + "/state"
-        p = s.get(get_url, verify = PEM_CERTIFICATE)
-        state = p.content
+        #print "checking deleted state"
+        #get_url = JOBS_URL + "/" + str(job_id) + "/state"
+        #p = s.get(get_url, verify = PEM_CERTIFICATE)
+        #state = p.content
         print "final state is " + state
 
 
@@ -85,7 +79,7 @@ def testJobLimit():
 
     with requests.Session() as s:
 
-        p = s.post(LOGIN_URL, data=params)
+        p = s.post(LOGIN_URL, data=login_credentials)
         # print the html returned or something more intelligent to see if it's a successful login page.
         print p.status_code
 
@@ -118,7 +112,7 @@ def testJobLimit():
 def testInputSet():
 
     with requests.Session() as s:
-        p = s.post(LOGIN_URL, data=params, verify = PEM_CERTIFICATE)
+        p = s.post(LOGIN_URL, data=login_credentials, verify = PEM_CERTIFICATE)
         # print the html returned or something more intelligent to see if it's a successful login page.
         assert p.status_code == 200
 
@@ -148,10 +142,9 @@ def testInputSet():
 
         # delete one of the files, then check the hashcode has changed
 
-        delete_url = INPUTSETS_URL + "/" + str(id) + "/files" + listing[0]
+        delete_url = INPUTSETS_URL + "/" + str(id) + "/files/" + listing[0]
         print delete_url
         p = s.delete(delete_url, verify=PEM_CERTIFICATE)
-        print p.status_code
         assert p.status_code == 200
 
         hash_url = INPUTSETS_URL + "/" + str(id) + "/hash"
@@ -163,7 +156,7 @@ def testInputSet():
 
 
 def main():
-    testInputSet()
+    testJob()
 
 
 

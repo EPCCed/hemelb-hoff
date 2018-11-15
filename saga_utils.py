@@ -1,6 +1,7 @@
 from __future__ import print_function
 import saga
 import os
+import re
 
 
 
@@ -160,12 +161,10 @@ def cancel_job(job_id, service):
         job.cancel()
         js.close()
     except Exception as e:
-        # cancelling a job could fail for a number of reasons, but most likely because the job is already complete
-        # ignore the moment, but do some logging?
-        pass
+        raise e
 
 
-def copy_remote_directory_to_local(remote_dir, local_job_dir):
+def copy_remote_directory_to_local(remote_dir, local_job_dir, filter):
 
     if not os.path.exists(local_job_dir):
         os.makedirs(local_job_dir)
@@ -173,15 +172,26 @@ def copy_remote_directory_to_local(remote_dir, local_job_dir):
     for f in remote_dir.list():
         if remote_dir.is_file(f):
             outfiletarget = 'file://localhost/' + local_job_dir
-            remote_dir.copy(f, outfiletarget)
+            if filter is not None:
+                try:
+                    if re.match(filter, str(f)):
+                        remote_dir.copy(f, outfiletarget)
+                except Exception as e:
+                    print("filter failed: {}".format(e.message))
+                    # filter failed, fallback to copy everything
+                    remote_dir.copy(f, outfiletarget)
+            else:
+                outfiletarget = 'file://localhost/' + local_job_dir
+                remote_dir.copy(f, outfiletarget)
         else:
             path = str(f)
             local_copy_dir = os.path.join(local_job_dir, path)
-            copy_remote_directory_to_local(remote_dir.open_dir(f), local_copy_dir)
+            copy_remote_directory_to_local(remote_dir.open_dir(f), local_copy_dir, filter)
 
 
 
-def stage_output_files(remote_working_dir, local_job_dir, service):
+def stage_output_files(remote_working_dir, local_job_dir, service, filter):
+
     try:
 
         if not os.path.exists(local_job_dir):
@@ -196,11 +206,22 @@ def stage_output_files(remote_working_dir, local_job_dir, service):
         for f in remote_dir.list():
             if remote_dir.is_file(f):
                 outfiletarget = 'file://localhost/' + local_job_dir
-                remote_dir.copy(f, outfiletarget)
+                if filter is not None:
+                    try:
+                        if re.match(filter, str(f)):
+                            remote_dir.copy(f, outfiletarget)
+                    except Exception as e:
+                        # filter failed, fallback to copying the file
+                        print("filter failed: {}".format(e.message))
+                        remote_dir.copy(f, outfiletarget)
+                else:
+                    outfiletarget = 'file://localhost/' + local_job_dir
+                    remote_dir.copy(f, outfiletarget)
+
             else:
                 path = str(f)
                 local_copy_dir = os.path.join(local_job_dir, path)
-                copy_remote_directory_to_local(remote_dir.open_dir(f), local_copy_dir)
+                copy_remote_directory_to_local(remote_dir.open_dir(f), local_copy_dir, filter)
 
         return 0
 
@@ -209,6 +230,9 @@ def stage_output_files(remote_working_dir, local_job_dir, service):
         print('An exception occured: {0} {1}'.format(ex.type, ex))
         # Trace back the exception. That can be helpful for debugging.
         print('Backtrace: {}'.format(ex.traceback))
+        return -1
+    except Exception as e:
+        print("error in staging: {}".format(e.message))
         return -1
 
 
@@ -238,13 +262,11 @@ def cleanup_directory(remote_dir, service):
                 try:
                     remote_dir.remove(f)
                 except Exception as e:
-                    # logging?
-                    pass
+                    raise e
             else:
                 cleanup_subdir(remote_dir.open_dir(f))
     except Exception as e:
-        # TODO logging
-        pass
+        raise e
 
 
 def cleanup_subdir(dir):
@@ -253,8 +275,7 @@ def cleanup_subdir(dir):
             try:
                 dir.remove(f)
             except Exception as e:
-                # logging?
-                pass
+                raise e
         else:
             cleanup_subdir(dir.open_dir(f))
 
@@ -272,8 +293,7 @@ def create_session_for_service(service):
         session.add_context(ctx)
         return session
     except Exception as e:
-        # TODO logging
-        return None
+        raise e
 
 
 

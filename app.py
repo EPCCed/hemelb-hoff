@@ -22,6 +22,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from saga_utils import stage_output_files, cleanup_directory
 from werkzeug.utils import secure_filename
 import shutil
+import re
 
 # role definitions
 SUPERUSER_ROLE = 'superuser'
@@ -266,6 +267,16 @@ def create_new_job():
     project = payload.get('project')
     queue = payload.get('queue')
 
+    filter = payload.get('filter')
+    # sanity check the filter rather than have it fail later
+    if filter is not None:
+        try:
+            re.compile(filter)
+        except Exception as e:
+            app.logger.error(e.message)
+            abort(500, "Invalid filter specification: " + e.message)
+
+
     # sanity check env - must be able to turn it into a dict
     #env = payload.get('env')
     #if env is not None:
@@ -283,14 +294,20 @@ def create_new_job():
 
     user_id = current_user.get_id()
 
-    cmd = 'INSERT INTO JOB(user_id, name, executable, service_id, local_job_id, arguments, num_total_cpus, total_physical_memory, wallclock_limit, project, queue) \
-        VALUES(:user_id, :name, :executable, :service_id, :local_job_id, :arguments, :num_total_cpus, :total_physical_memory, :wallclock_limit, :project, :queue )'
+    cmd = 'INSERT INTO JOB(user_id, name, executable, service_id, local_job_id, arguments, num_total_cpus, ' \
+          'total_physical_memory, wallclock_limit, project, queue, filter) \
+        VALUES(:user_id, :name, :executable, :service_id, :local_job_id, :arguments, ' \
+          ':num_total_cpus, :total_physical_memory, :wallclock_limit, :project, :queue, :filter )'
     db.engine.execute(text(cmd), user_id=user_id, name=job_name, executable=executable, service_id=service_id, local_job_id=job_uuid,
                       arguments=arguments, num_total_cpus=num_total_cpus, total_physical_memory=total_physical_memory,
-                      wallclock_limit=wallclock_limit, project=project, queue=queue)
+                      wallclock_limit=wallclock_limit, project=project, queue=queue, filter=filter)
 
     # create a staging area for this job
-    os.mkdir(os.path.join(INPUT_STAGING_AREA, job_uuid))
+    try:
+        os.mkdir(os.path.join(INPUT_STAGING_AREA, job_uuid))
+    except Exception as e:
+        app.logger.error(e.message)
+        abort(500, e.message)
 
 
     return str(job_uuid)
@@ -302,6 +319,9 @@ def get_job_state(id):
     # power and superusers can see everything
     cmd = "SELECT state, user_id FROM JOB WHERE local_job_id=:local_job_id"
     result = db.engine.execute(text(cmd), local_job_id = id).fetchone()
+    if result is None:
+        abort(404)
+
     state = result['state']
     owner = result['user_id']
 
@@ -321,6 +341,8 @@ def get_job_description(id):
     cmd = "SELECT * FROM JOB WHERE local_job_id=:local_job_id"
     result = db.engine.execute(text(cmd), local_job_id = id)
     job_record = result.fetchone()
+    if job_record is None:
+        abort(404)
 
     if int(job_record['user_id']) != int(current_user.get_id()):
         if not (current_user.has_role(POWERUSER_ROLE) or current_user.has_role(SUPERUSER_ROLE)):
@@ -341,6 +363,8 @@ def get_job_description(id):
     jd["project"] = job_record["project"]
     jd["queue"] = job_record["queue"]
     jd['input_set_id'] = job_record['input_set_id']
+    jd['filter'] = job_record['filter']
+
     return jsonify(jd)
 
 
@@ -376,6 +400,7 @@ def submit_job(id):
     jd['project'] = result['project']
     jd['queue'] = result['queue']
 
+
     # if env is specified, we need to turn the arguments into a dict
     #if result['env'] is not None:
     #    try:
@@ -391,13 +416,26 @@ def submit_job(id):
 
     if result['input_set_id'] is not None:
         input_set_dir = os.path.join(INPUTSET_STAGING_AREA, result['input_set_id'])
-        saga_utils.stage_input_files(id, input_set_dir, service)
+        try:
+            saga_utils.stage_input_files(id, input_set_dir, service)
+        except Exception as e:
+            app.logger.error(e.message)
+            abort(500, e.message)
 
     # stage any input files uploaded for this job
-    saga_utils.stage_input_files(id, local_input_file_dir, service)
+    try:
+        saga_utils.stage_input_files(id, local_input_file_dir, service)
+    except Exception as e:
+        app.logger.error(e.message)
+        abort(500, e.message)
 
     # kick off the job and get an id for tracking the remote job state
-    remote_job_id = saga_utils.submit_saga_job(jd, service)
+    remote_job_id = None
+    try:
+        remote_job_id = saga_utils.submit_saga_job(jd, service)
+    except Exception as e:
+        app.logger.error(e.message)
+        abort(500, e.message)
 
     if remote_job_id != -1:
         # update database
@@ -519,12 +557,14 @@ def delete_job(id):
                 saga_utils.cancel_job(r[remote_job_id], service)
 
             except Exception as e:
-                # TODO logging
-                pass
+                app.logger.error(e.message)
 
         # delete any remote files associated with this job
         REMOTE_WORKING_DIR = os.path.join(service['working_directory'], str(id))
-        cleanup_directory(REMOTE_WORKING_DIR, service)
+        try:
+            cleanup_directory(REMOTE_WORKING_DIR, service)
+        except Exception as e:
+            app.logger.error(e.message)
 
         # delete any local files associated with the job
 
@@ -598,7 +638,7 @@ def create_input_set():
 def list_input_sets():
     cmd = 'SELECT name, id FROM INPUT_SET'
     result = db.engine.execute(text(cmd))
-    return jsonify(queryresult_to_dict({'name', 'id'}, result))
+    return jsonify(queryresult_to_array({'name', 'id'}, result))
 
 
 
@@ -717,7 +757,7 @@ def refresh_job_state():
 
     try:
 
-        cmd = "SELECT local_job_id, remote_job_id, service_id FROM JOB WHERE state='SUBMITTED'"
+        cmd = "SELECT local_job_id, remote_job_id, service_id, filter FROM JOB WHERE state='SUBMITTED'"
         result = db.engine.execute(text(cmd))
         for r in result:
 
@@ -726,7 +766,12 @@ def refresh_job_state():
                 remote_job_id = r['remote_job_id']
 
                 service = get_service(r['service_id'])
-                remote_state = saga_utils.get_remote_job_state(remote_job_id, service)
+                remote_state = None
+
+                try:
+                    remote_state = saga_utils.get_remote_job_state(remote_job_id, service)
+                except Exception as e:
+                    app.logger.error(e.message)
 
                 if (remote_state in ['Done', 'DONE', 'Failed', 'FAILED']):
                     # update the local state
@@ -736,12 +781,10 @@ def refresh_job_state():
                     # add a job to retrieve any output files
                     scheduler.add_job(retrieve_output_files(local_job_id))
             except Exception as e:
-                # TODO logging
-                print e
+                app.logger.error(e.message)
 
     except Exception as e:
-        # TODO logging
-        print e
+        app.logger.error(e.message)
 
 
 def get_service(service_id):
@@ -759,7 +802,7 @@ def get_service(service_id):
     return service
 
 def retrieve_output_files(job_id):
-    cmd = "SELECT remote_job_id, service_id FROM JOB WHERE local_job_id=:local_job_id"
+    cmd = "SELECT remote_job_id, service_id, filter FROM JOB WHERE local_job_id=:local_job_id"
     result = db.engine.execute(text(cmd), local_job_id=job_id)
     job = result.fetchone()
 
@@ -769,15 +812,19 @@ def retrieve_output_files(job_id):
 
     try:
         REMOTE_WORKING_DIR = os.path.join(service['working_directory'], str(job_id))
-        stage_output_files(REMOTE_WORKING_DIR, local_file_dir, service)
-        cleanup_directory(REMOTE_WORKING_DIR, service)
+        filter = job['filter']
+        try:
+            stage_output_files(REMOTE_WORKING_DIR, local_file_dir, service, filter)
+            cleanup_directory(REMOTE_WORKING_DIR, service)
+        except Exception as e:
+            app.logger.error(e.message)
+
         # flag the job as retrieved
         cmd = "UPDATE JOB SET retrieved=1 WHERE local_job_id=:local_job_id"
         db.engine.execute(text(cmd), local_job_id=job_id)
 
     except Exception as e:
-        # TODO log error somewhere
-        print e
+        app.logger.error(e.message)
 
 
 

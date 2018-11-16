@@ -15,7 +15,7 @@ payload['num_total_cpus'] = 36
 payload['wallclock_limit'] = 5
 payload['project'] = "d411-polnet"
 payload['arguments'] = "david, hassell, hoff"
-payload['filter'] = "*.+\.dat"
+payload['filter'] = ".+\.dat"
 
 small_files = { 'config.gmy': open('/home/ubuntu/config.gmy','rb'),
           'config.xml': open('/home/ubuntu/config.xml','rb')
@@ -61,15 +61,16 @@ def testJob():
             state = p.content
             print state
 
-        #print "deleting job"
-        #delete_url = JOBS_URL + "/" + str(job_id)
-        #p = s.delete(delete_url, verify = PEM_CERTIFICATE)
-        #print p.status_code
+        print "deleting job"
+        delete_url = JOBS_URL + "/" + str(job_id)
+        p = s.delete(delete_url, verify = PEM_CERTIFICATE)
+        assert p.status_code == 200
+        print p.status_code
 
-        #print "checking deleted state"
-        #get_url = JOBS_URL + "/" + str(job_id) + "/state"
-        #p = s.get(get_url, verify = PEM_CERTIFICATE)
-        #state = p.content
+        print "checking deleted state"
+        get_url = JOBS_URL + "/" + str(job_id) + "/state"
+        p = s.get(get_url, verify = PEM_CERTIFICATE)
+        state = p.content
         print "final state is " + state
 
 
@@ -157,6 +158,8 @@ def testInputSet():
 
 def main():
     testJob()
+    testInputSet()
+    testJobLimit()
 
 
 

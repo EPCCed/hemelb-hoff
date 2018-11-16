@@ -532,7 +532,7 @@ def delete_job(id):
     try:
 
         # check ownership of the job
-        cmd = "SELECT user_id, service_id, remote_job_id, state FROM JOB WHERE local_job_id = :local_job_id"
+        cmd = "SELECT user_id, service_id, remote_job_id, state, retrieved FROM JOB WHERE local_job_id = :local_job_id"
         result = db.engine.execute(text(cmd), local_job_id = id)
         r = result.fetchone()
         if r is None:
@@ -548,36 +548,40 @@ def delete_job(id):
 
         service = get_service(r['service_id'])
 
-        # kill the remote job if still running
+        # only do remote cleanup if not already done
+        if r['retrieved'] != 1:
 
-        remote_job_id = r['remote_job_id']
+            print r['retrieved']
 
-        if remote_job_id is not None:
+            # kill the remote job if still running
+
+            remote_job_id = r['remote_job_id']
+
+            if remote_job_id is not None:
+                try:
+                    saga_utils.cancel_job(remote_job_id, service)
+                except Exception as e:
+                    app.logger.error("SAGA: error cancelling job:" + e.message)
+
+            # delete any remote files associated with this job
+            REMOTE_WORKING_DIR = os.path.join(service['working_directory'], str(id))
             try:
-                saga_utils.cancel_job(r[remote_job_id], service)
-
+                cleanup_directory(REMOTE_WORKING_DIR, service)
             except Exception as e:
-                app.logger.error(e.message)
+                app.logger.error("SAGA: error cleaning up directory:" + e.message)
 
-        # delete any remote files associated with this job
-        REMOTE_WORKING_DIR = os.path.join(service['working_directory'], str(id))
-        try:
-            cleanup_directory(REMOTE_WORKING_DIR, service)
-        except Exception as e:
-            app.logger.error(e.message)
-
-        # delete any local files associated with the job
+        # delete any retrieved output files associated with the job
 
         LOCAL_OUTPUT_DIR = os.path.join(OUTPUT_STAGING_AREA, str(id))
         if os.path.exists(LOCAL_OUTPUT_DIR):
             shutil.rmtree(LOCAL_OUTPUT_DIR)
 
-        # delete any local files associated with the job
+        # delete any local input files associated with the job
         LOCAL_INPUT_DIR = os.path.join(INPUT_STAGING_AREA, str(id))
         if os.path.exists(LOCAL_INPUT_DIR):
             shutil.rmtree(LOCAL_INPUT_DIR)
 
-        # update the job to show as deleted, or remove it from the database?
+        # update the job to show as deleted
         cmd = "UPDATE JOB SET state=:state WHERE local_job_id = :local_job_id"
         result = db.engine.execute(text(cmd), state="DELETED", local_job_id=id)
 
@@ -757,7 +761,7 @@ def refresh_job_state():
 
     try:
 
-        cmd = "SELECT local_job_id, remote_job_id, service_id, filter FROM JOB WHERE state='SUBMITTED'"
+        cmd = "SELECT local_job_id, remote_job_id, service_id FROM JOB WHERE state='SUBMITTED'"
         result = db.engine.execute(text(cmd))
         for r in result:
 
@@ -771,15 +775,18 @@ def refresh_job_state():
                 try:
                     remote_state = saga_utils.get_remote_job_state(remote_job_id, service)
                 except Exception as e:
-                    app.logger.error(e.message)
+                    app.logger.error("refresh_job_state 1:" + e.message)
 
                 if (remote_state in ['Done', 'DONE', 'Failed', 'FAILED']):
                     # update the local state
                     cmd = "UPDATE JOB SET state=:state WHERE local_job_id=:local_job_id"
                     db.engine.execute(text(cmd), state=remote_state, local_job_id=local_job_id)
 
-                    # add a job to retrieve any output files
-                    scheduler.add_job(retrieve_output_files(local_job_id))
+                    try:
+                        scheduler.add_job(retrieve_output_files, args=[local_job_id])
+                    except Exception as e:
+                        app.logger.error(e.message)
+
             except Exception as e:
                 app.logger.error(e.message)
 
@@ -817,14 +824,14 @@ def retrieve_output_files(job_id):
             stage_output_files(REMOTE_WORKING_DIR, local_file_dir, service, filter)
             cleanup_directory(REMOTE_WORKING_DIR, service)
         except Exception as e:
-            app.logger.error(e.message)
+            app.logger.error("retrieve_output_files:" + e.message)
 
         # flag the job as retrieved
         cmd = "UPDATE JOB SET retrieved=1 WHERE local_job_id=:local_job_id"
         db.engine.execute(text(cmd), local_job_id=job_id)
 
     except Exception as e:
-        app.logger.error(e.message)
+        app.logger.error("retrieve_output_files:" + e.message)
 
 
 

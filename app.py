@@ -1,10 +1,11 @@
 
 from flask_admin import Admin
-from config import SECRET_KEY, SQLALCHEMY_DATABASE_URI, INPUT_STAGING_AREA, OUTPUT_STAGING_AREA, INPUTSET_STAGING_AREA, MAX_USER_JOBS
+from config import SECRET_KEY, SQLALCHEMY_DATABASE_URI, INPUT_STAGING_AREA, OUTPUT_STAGING_AREA, \
+    INPUTSET_STAGING_AREA, MAX_USER_JOBS, REMOTE_JOB_STATE_REFRESH_PERIOD
 from utils import queryresult_to_dict, queryresult_to_array, compute_hash_for_dir_contents
 from flask_sqlalchemy import SQLAlchemy
 from flask_security import Security, SQLAlchemyUserDatastore, \
-    UserMixin, RoleMixin, login_required, roles_required, current_user, utils
+    UserMixin, RoleMixin, login_required, utils
 from flask_admin import helpers as admin_helpers
 from flask_admin.contrib import sqla
 from flask import Flask, url_for, redirect, request, abort
@@ -332,6 +333,26 @@ def get_job_state(id):
     return state, 200, {'Content-Type': 'text/plain'}
 
 
+@app.route('/jobs/<id>/retrieved',  methods=['GET'])
+@login_required
+def get_job_retrieved(id):
+    # normal users can only see information about jobs they own
+    # power and superusers can see everything
+    cmd = "SELECT user_id, retrieved FROM JOB WHERE local_job_id=:local_job_id"
+    result = db.engine.execute(text(cmd), local_job_id = id).fetchone()
+    if result is None:
+        abort(404)
+
+    retrieved = result['retrieved']
+    owner = result['user_id']
+
+    if int(owner) != int(current_user.get_id()):
+        if not (current_user.has_role(POWERUSER_ROLE) or current_user.has_role(SUPERUSER_ROLE)):
+            abort(403)
+
+    return str(retrieved), 200, {'Content-Type': 'text/plain'}
+
+
 @app.route('/jobs/<id>',  methods=['GET'])
 @login_required
 def get_job_description(id):
@@ -551,7 +572,7 @@ def delete_job(id):
         # only do remote cleanup if not already done
         if r['retrieved'] != 1:
 
-            print r['retrieved']
+
 
             # kill the remote job if still running
 
@@ -835,7 +856,7 @@ def retrieve_output_files(job_id):
 
 
 
-scheduler.add_job(refresh_job_state, 'interval', minutes=1)
+scheduler.add_job(refresh_job_state, 'interval', minutes=REMOTE_JOB_STATE_REFRESH_PERIOD)
 scheduler.start()
 
 if __name__ == '__main__':

@@ -56,3 +56,6 @@ TEMP_FOLDER = "/home/ubuntu/temp"
 # maximum number of jobs a user may have.
 # DELETED jobs are not counted
 MAX_USER_JOBS = 10
+
+# time (in minutes) to wait before checking remote job state
+REMOTE_JOB_STATE_REFRESH_PERIOD = 2

@@ -253,29 +253,62 @@ def create_new_job():
 
     payload = request.json
 
-    # name, service, and executable are mandatory,
-    # otherwise the job is pointless
+    job_spec = {}
 
-    job_name = payload['name']
-    service_name = payload['service']
-    executable = payload['executable']
 
-    # look for additional information, will set as NULL if not in payload
-    arguments = payload.get('arguments')
-    num_total_cpus = payload.get('num_total_cpus')
-    total_physical_memory = payload.get('total_physical_memory')
-    wallclock_limit = payload.get('wallclock_limit')
-    project = payload.get('project')
-    queue = payload.get('queue')
+    # if a template has been specified we take all our parameters from the template record and ignore everything else
+    template_name = payload.get('template_name')
+    if template_name is not None:
 
-    filter = payload.get('filter')
-    # sanity check the filter rather than have it fail later
-    if filter is not None:
-        try:
-            re.compile(filter)
-        except Exception as e:
-            app.logger.error(e.message)
-            abort(500, "Invalid filter specification: " + e.message)
+        cmd = "SELECT * FROM JOB_TEMPLATE WHERE name=:name"
+        result = db.engine.execute(text(cmd), name=template_name).fetchone()
+        if result is None:
+            abort(404, "No matching job template found for name " + template_name)
+
+        job_spec['job_name'] = result['name']
+        job_spec['service_id'] = result['service_id']
+        job_spec['executable'] = result['executable']
+        job_spec['arguments'] = result['arguments']
+        job_spec['num_total_cpus'] = result['num_total_cpus']
+        job_spec['total_physical_memory'] = result['total_physical_memory']
+        job_spec['wallclock_limit'] = result['wallclock_limit']
+        job_spec['project'] = result['project']
+        job_spec['queue'] = result['queue']
+        job_spec['extended'] = result['extended']
+        job_spec['filter'] = result['filter']
+        job_spec['input_set_id'] = result['input_set_id']
+
+    else:
+
+        # name, service, and executable are mandatory,
+        # otherwise the job is pointless
+
+        job_spec['job_name'] = payload['name']
+        job_spec['service_name'] = payload['service']
+        job_spec['executable'] = payload['executable']
+
+        cmd = 'SELECT id FROM SERVICE where name=:name'
+        result = db.engine.execute(text(cmd), name=payload['service'])
+        job_spec['service_id'] = result.fetchone()['id']
+
+        # look for additional information, will set as NULL if not in payload
+        job_spec['arguments'] = payload.get('arguments')
+        job_spec['num_total_cpus'] = payload.get('num_total_cpus')
+        job_spec['total_physical_memory'] = payload.get('total_physical_memory')
+        job_spec['wallclock_limit'] = payload.get('wallclock_limit')
+        job_spec['project'] = payload.get('project')
+        job_spec['queue'] = payload.get('queue')
+        job_spec['extended'] = payload.get('extended')
+        job_spec['input_set_id'] = payload.get('input_set_id')
+
+        job_spec['filter'] = payload.get('filter')
+        # sanity check the filter rather than have it fail later
+        if filter is not None:
+            try:
+                re.compile(filter)
+            except Exception as e:
+                app.logger.error(e.message)
+                abort(500, "Invalid filter specification: " + e.message)
 
 
     # sanity check env - must be able to turn it into a dict
@@ -289,19 +322,19 @@ def create_new_job():
     job_uuid = str(uuid.uuid4())
 
     # look up the service name to get the correct id
-    cmd = 'SELECT id FROM SERVICE where name=:name'
-    result = db.engine.execute(text(cmd), name=service_name)
-    service_id = result.fetchone()['id']
+
 
     user_id = current_user.get_id()
 
     cmd = 'INSERT INTO JOB(user_id, name, executable, service_id, local_job_id, arguments, num_total_cpus, ' \
-          'total_physical_memory, wallclock_limit, project, queue, filter) \
+          'total_physical_memory, wallclock_limit, project, queue, filter, extended) \
         VALUES(:user_id, :name, :executable, :service_id, :local_job_id, :arguments, ' \
-          ':num_total_cpus, :total_physical_memory, :wallclock_limit, :project, :queue, :filter )'
-    db.engine.execute(text(cmd), user_id=user_id, name=job_name, executable=executable, service_id=service_id, local_job_id=job_uuid,
-                      arguments=arguments, num_total_cpus=num_total_cpus, total_physical_memory=total_physical_memory,
-                      wallclock_limit=wallclock_limit, project=project, queue=queue, filter=filter)
+          ':num_total_cpus, :total_physical_memory, :wallclock_limit, :project, :queue, :filter, :extended )'
+    db.engine.execute(text(cmd), user_id=user_id, name=job_spec['job_name'], executable=job_spec['executable'],
+                      service_id=job_spec['service_id'], local_job_id=job_uuid, arguments=job_spec['arguments'],
+                      num_total_cpus=job_spec['num_total_cpus'], total_physical_memory=job_spec['total_physical_memory'],
+                      wallclock_limit=job_spec['wallclock_limit'], project=job_spec['project'], queue=job_spec['queue'],
+                      filter=job_spec['filter'], extended=job_spec['extended'])
 
     # create a staging area for this job
     try:
@@ -331,6 +364,26 @@ def get_job_state(id):
             abort(403)
 
     return state, 200, {'Content-Type': 'text/plain'}
+
+
+
+@app.route('/templates',  methods=['GET'])
+@login_required
+def get_job_templates():
+    # normal users can only see information about jobs they own
+    # power and superusers can see everything
+    cmd = "SELECT name, id, description FROM JOB_TEMPLATE ORDER BY name"
+    result = db.engine.execute(text(cmd))
+    if result is None:
+        abort(404)
+
+    return jsonify(queryresult_to_array({'name', 'id', 'description'}, result))
+
+
+
+
+
+
 
 
 @app.route('/jobs/<id>/retrieved',  methods=['GET'])

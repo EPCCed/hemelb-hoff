@@ -289,8 +289,13 @@ def create_session_for_service(service):
 
     try:
 
-        ctx = saga.Context("UserPass")
+        #ctx = saga.Context("UserPass")
+        #ctx.user_id = service['username']
+        #ctx.user_pass = service['user_pass']
+
+        ctx = saga.Context("SSH")
         ctx.user_id = service['username']
+        ctx.user_key = service['user_key']
         ctx.user_pass = service['user_pass']
 
         # create a session and pass our context

@@ -7,13 +7,12 @@ import re
 
 
 # name for the job's stdout file
-JOB_STDOUT = "mixed.stdout"
+JOB_STDOUT = "job.stdout"
 
 # name for the job's stderr file
-JOB_STDERR = "mixed.stderr"
+JOB_STDERR = "job.stderr"
 
-# name for the job's output file, as opposed to stdout
-JOB_OUTPUT_FILE = "output_file.txt"
+
 
 
 
@@ -122,9 +121,15 @@ def submit_saga_job(job_description, service):
         if arguments is not None:
             jd.arguments = arguments
 
+        # here we abuse the SAGA spec to pass through any scheduler-specific directives.
+        # eg exclusive reservation of a node, or anything that SAGA does not directly support
+        extended = job_description.get('extended')
+        if extended is not None:
+            jd.spmd_variation = extended
+
         # specify where the job's stdout and stderr will go
-        jd.output = JOB_STDOUT
-        jd.error = JOB_STDERR
+        #jd.output = "job.stdout"
+        #jd.stderr = "job.stderr"
 
         # specify the working directory for the job
         jd.working_directory = REMOTE_WORKING_DIR

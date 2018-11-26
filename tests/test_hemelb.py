@@ -2,9 +2,11 @@ import requests
 import time
 from config import MAX_USER_JOBS
 import uuid
-from tests.test_params import LOGIN_URL, JOBS_URL, INPUTSETS_URL, PEM_CERTIFICATE
+from tests.test_params import LOGIN_URL, JOBS_URL, INPUTSETS_URL, PEM_CERTIFICATE, TEST_TEMPLATE_NAME
 from tests.test_params import login_credentials
 
+
+# main set of test functions for the REST interfaces
 
 
 payload = {}
@@ -32,6 +34,65 @@ def testJob():
 
         # An authorised request.
         p = s.post(JOBS_URL, json=payload, verify = PEM_CERTIFICATE)
+        assert p.status_code == 200
+        job_id = p.content
+        print job_id
+
+        #upload the small input files
+        file_url = JOBS_URL + "/" + str(job_id) + "/files"
+        p = s.post(file_url, files=small_files, verify = PEM_CERTIFICATE)
+        assert p.status_code == 200
+
+
+        #submit the job
+        post_url = JOBS_URL + "/" + str(job_id) + "/submit"
+        p = s.post(post_url, verify = PEM_CERTIFICATE)
+        assert p.status_code == 200
+        print p.text
+
+        #wait for completion
+        get_url = JOBS_URL + "/" + str(job_id) + "/state"
+        p = s.get(get_url, verify = PEM_CERTIFICATE)
+        assert p.status_code == 200
+        state = p.content
+
+        while state not in ['Done', 'Failed']:
+            time.sleep(60)
+            p = s.get(get_url, verify = PEM_CERTIFICATE)
+            assert p.status_code == 200
+            state = p.content
+            print state
+
+        #print "deleting job"
+        #delete_url = JOBS_URL + "/" + str(job_id)
+        #p = s.delete(delete_url, verify = PEM_CERTIFICATE)
+        #assert p.status_code == 200
+        #print p.status_code
+
+        #print "checking deleted state"
+        #get_url = JOBS_URL + "/" + str(job_id) + "/state"
+        #p = s.get(get_url, verify = PEM_CERTIFICATE)
+        #state = p.content
+        print "final state is " + state
+
+
+# submit a job by specifying a template name rather than providing a job description
+def testTemplate():
+
+    with requests.Session() as s:
+
+        p = s.post(LOGIN_URL, data=login_credentials, verify = PEM_CERTIFICATE)
+        # print the html returned or something more intelligent to see if it's a successful login page.
+        assert p.status_code == 200
+
+        # try a non-existent template and make sure it behaves itself
+        template_payload = {'template_name': "fdsfsdfsdsdfsdfsdfsdfsdfsdfs"}
+        p = s.post(JOBS_URL, json=template_payload, verify=PEM_CERTIFICATE)
+        assert p.status_code == 404
+
+        # now try a real one
+        template_payload = {'template_name': TEST_TEMPLATE_NAME }
+        p = s.post(JOBS_URL, json=template_payload, verify = PEM_CERTIFICATE)
         assert p.status_code == 200
         job_id = p.content
         print job_id
@@ -157,9 +218,10 @@ def testInputSet():
 
 
 def main():
-    testJob()
+    #testJob()
     #testInputSet()
     #testJobLimit()
+    testTemplate()
 
 
 

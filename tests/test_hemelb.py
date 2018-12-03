@@ -16,11 +16,11 @@ payload['executable'] = "/lustre/home/d411/malcolmi/test_submit/submit.sh"
 payload['num_total_cpus'] = 36
 payload['wallclock_limit'] = 5
 payload['project'] = "d411-polnet"
-payload['arguments'] = "david, hassell, hoff"
-payload['filter'] = ".+\.dat"
+payload['arguments'] = "test.xml"
+#payload['filter'] = "results\/.*"
 
 small_files = { 'config.gmy': open('/home/ubuntu/config.gmy','rb'),
-          'config.xml': open('/home/ubuntu/config.xml','rb')
+          'test.xml': open('/home/ubuntu/config.xml','rb')
         }
 
 
@@ -34,6 +34,7 @@ def testJob():
 
         # An authorised request.
         p = s.post(JOBS_URL, json=payload, verify = PEM_CERTIFICATE)
+        print p.content
         assert p.status_code == 200
         job_id = p.content
         print job_id
@@ -63,17 +64,27 @@ def testJob():
             state = p.content
             print state
 
-        #print "deleting job"
-        #delete_url = JOBS_URL + "/" + str(job_id)
-        #p = s.delete(delete_url, verify = PEM_CERTIFICATE)
-        #assert p.status_code == 200
-        #print p.status_code
+        file_list_url = JOBS_URL + "/" + str(job_id) + "/files"
+        p = s.get(file_list_url, verify=PEM_CERTIFICATE)
+        assert p.status_code == 200
+        file_list = p.json()
 
-        #print "checking deleted state"
-        #get_url = JOBS_URL + "/" + str(job_id) + "/state"
-        #p = s.get(get_url, verify = PEM_CERTIFICATE)
-        #state = p.content
+        for f in file_list:
+            print f
+
+
+        print "deleting job"
+        delete_url = JOBS_URL + "/" + str(job_id)
+        p = s.delete(delete_url, verify = PEM_CERTIFICATE)
+        assert p.status_code == 200
+        print p.status_code
+
+        print "checking deleted state"
+        get_url = JOBS_URL + "/" + str(job_id) + "/state"
+        p = s.get(get_url, verify = PEM_CERTIFICATE)
+        state = p.content
         print "final state is " + state
+        assert state == 'DELETED'
 
 
 # submit a job by specifying a template name rather than providing a job description
@@ -91,7 +102,7 @@ def testTemplate():
         assert p.status_code == 404
 
         # now try a real one
-        template_payload = {'template_name': TEST_TEMPLATE_NAME }
+        template_payload = {'template_name': TEST_TEMPLATE_NAME, 'arguments': "test.xml" }
         p = s.post(JOBS_URL, json=template_payload, verify = PEM_CERTIFICATE)
         assert p.status_code == 200
         job_id = p.content
@@ -122,17 +133,26 @@ def testTemplate():
             state = p.content
             print state
 
-        #print "deleting job"
-        #delete_url = JOBS_URL + "/" + str(job_id)
-        #p = s.delete(delete_url, verify = PEM_CERTIFICATE)
-        #assert p.status_code == 200
-        #print p.status_code
+        file_list_url = JOBS_URL + "/" + str(job_id) + "/files"
+        p = s.get(file_list_url, verify=PEM_CERTIFICATE)
+        assert p.status_code == 200
+        file_list = p.json()
 
-        #print "checking deleted state"
-        #get_url = JOBS_URL + "/" + str(job_id) + "/state"
-        #p = s.get(get_url, verify = PEM_CERTIFICATE)
-        #state = p.content
+        for f in file_list:
+            print f
+
+        print "deleting job"
+        delete_url = JOBS_URL + "/" + str(job_id)
+        p = s.delete(delete_url, verify = PEM_CERTIFICATE)
+        assert p.status_code == 200
+        print p.status_code
+
+        print "checking deleted state"
+        get_url = JOBS_URL + "/" + str(job_id) + "/state"
+        p = s.get(get_url, verify = PEM_CERTIFICATE)
+        state = p.content
         print "final state is " + state
+        assert state == 'DELETED'
 
 
 # note: this test relies on the user having no active jobs in the test database
@@ -218,10 +238,10 @@ def testInputSet():
 
 
 def main():
-    #testJob()
+    testJob()
     #testInputSet()
     #testJobLimit()
-    testTemplate()
+    #testTemplate()
 
 
 

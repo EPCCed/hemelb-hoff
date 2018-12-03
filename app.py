@@ -253,7 +253,21 @@ def create_new_job():
 
     payload = request.json
 
-    job_spec = {}
+    job_spec = {
+
+        'job_name': None,
+        'service_id': None,
+        'executable': None,
+        'arguments': None,
+        'num_total_cpus': None,
+        'total_physical_memory': None,
+        'wallclock_limit': None,
+        'project': None,
+        'queue': None,
+        'extended': None,
+        'filter': None,
+        'input_set_id': None
+    }
 
 
     # if a template has been specified we take all our parameters from the template record and ignore everything else
@@ -278,37 +292,41 @@ def create_new_job():
         job_spec['filter'] = result['filter']
         job_spec['input_set_id'] = result['input_set_id']
 
-    else:
+
+    # now look at the rest of the payload; user-supplied arguments override template arguments
 
         # name, service, and executable are mandatory,
         # otherwise the job is pointless
 
-        job_spec['job_name'] = payload['name']
-        job_spec['service_name'] = payload['service']
-        job_spec['executable'] = payload['executable']
+    if 'name' in payload: job_spec['job_name'] = payload['name']
+    if 'executable' in payload: job_spec['executable'] = payload['executable']
 
+    if 'service' in payload:
         cmd = 'SELECT id FROM SERVICE where name=:name'
         result = db.engine.execute(text(cmd), name=payload['service'])
         job_spec['service_id'] = result.fetchone()['id']
 
-        # look for additional information, will set as NULL if not in payload
-        job_spec['arguments'] = payload.get('arguments')
-        job_spec['num_total_cpus'] = payload.get('num_total_cpus')
-        job_spec['total_physical_memory'] = payload.get('total_physical_memory')
-        job_spec['wallclock_limit'] = payload.get('wallclock_limit')
-        job_spec['project'] = payload.get('project')
-        job_spec['queue'] = payload.get('queue')
-        job_spec['extended'] = payload.get('extended')
-        job_spec['input_set_id'] = payload.get('input_set_id')
+    # look for additional information, will set as NULL if not in payload
+    if 'arguments' in payload: job_spec['arguments'] = payload.get('arguments')
+    if 'num_total_cpus' in payload: job_spec['num_total_cpus'] = payload.get('num_total_cpus')
+    if 'total_physical_memory' in payload: job_spec['total_physical_memory'] = payload.get('total_physical_memory')
+    if 'wallclock_limit' in payload: job_spec['wallclock_limit'] = payload.get('wallclock_limit')
+    if 'project' in payload: job_spec['project'] = payload.get('project')
+    if 'queue' in payload: job_spec['queue'] = payload.get('queue')
+    if 'extended' in payload: job_spec['extended'] = payload.get('extended')
+    if 'input_set_id' in payload: job_spec['input_set_id'] = payload.get('input_set_id')
 
+    if 'filter' in payload:
         job_spec['filter'] = payload.get('filter')
-        # sanity check the filter rather than have it fail later
-        if filter is not None:
-            try:
-                re.compile(filter)
-            except Exception as e:
-                app.logger.error(e.message)
-                abort(500, "Invalid filter specification: " + e.message)
+
+
+    # sanity check the filter rather than have it fail later
+    if job_spec['filter'] is not None:
+        try:
+            re.compile(job_spec['filter'])
+        except Exception as e:
+            app.logger.error(e.message)
+            abort(500, "Invalid filter specification: " + e.message)
 
 
     # sanity check env - must be able to turn it into a dict

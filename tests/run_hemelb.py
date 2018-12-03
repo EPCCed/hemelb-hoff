@@ -42,6 +42,7 @@ def submit_and_fetch_simulation(xml_file, gmy_file, template_name, output_dir):
         # create a new job using the template name
         payload = {}
         payload['template_name'] = template_name
+        payload['arguments'] = xml_file
 
         # Post the job spec, job is created with NEW state
         p = s.post(JOBS_URL, json=payload, verify=PEM_CERTIFICATE)

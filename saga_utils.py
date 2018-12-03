@@ -128,8 +128,8 @@ def submit_saga_job(job_description, service):
             jd.spmd_variation = extended
 
         # specify where the job's stdout and stderr will go
-        #jd.output = "job.stdout"
-        #jd.stderr = "job.stderr"
+        jd.output = 'job.stdout'
+        jd.error = 'job.stderr'
 
         # specify the working directory for the job
         jd.working_directory = REMOTE_WORKING_DIR
@@ -169,7 +169,7 @@ def cancel_job(job_id, service):
         raise e
 
 
-def copy_remote_directory_to_local(remote_dir, local_job_dir, filter):
+def copy_remote_directory_to_local(remote_dir, local_job_dir, base_dir, filter):
 
     if not os.path.exists(local_job_dir):
         os.makedirs(local_job_dir)
@@ -179,10 +179,18 @@ def copy_remote_directory_to_local(remote_dir, local_job_dir, filter):
             outfiletarget = 'file://localhost/' + local_job_dir
             if filter is not None:
                 try:
-                    if re.match(filter, str(f)):
+                    # get the url of our current directory
+                    dir_url = str(remote_dir.get_url())
+
+                    # get the relative directory path by referencing relative to base directory
+                    relative_path = dir_url.replace(base_dir,"")
+
+                    # get the relative file path
+                    relative_file_path = os.path.join(relative_path, str(f))
+                    if re.match(filter, relative_file_path) is not None:
                         remote_dir.copy(f, outfiletarget)
+
                 except Exception as e:
-                    print("filter failed: {}".format(e.message))
                     # filter failed, fallback to copy everything
                     remote_dir.copy(f, outfiletarget)
             else:
@@ -191,7 +199,7 @@ def copy_remote_directory_to_local(remote_dir, local_job_dir, filter):
         else:
             path = str(f)
             local_copy_dir = os.path.join(local_job_dir, path)
-            copy_remote_directory_to_local(remote_dir.open_dir(f), local_copy_dir, filter)
+            copy_remote_directory_to_local(remote_dir.open_dir(f), local_copy_dir, base_dir, filter)
 
 
 
@@ -204,9 +212,10 @@ def stage_output_files(remote_working_dir, local_job_dir, service, filter):
 
         session = create_session_for_service(service)
 
-        # create the job's working directory and copy over the contents of our job's output directory
+        # create the job's local output directory and copy over the contents of our job's output directory
 
         remote_dir = saga.filesystem.Directory(service['file_url'] + remote_working_dir, session=session)
+        base_url = str(remote_dir.get_url()) + "/"
 
         for f in remote_dir.list():
             if remote_dir.is_file(f):
@@ -216,8 +225,7 @@ def stage_output_files(remote_working_dir, local_job_dir, service, filter):
                         if re.match(filter, str(f)):
                             remote_dir.copy(f, outfiletarget)
                     except Exception as e:
-                        # filter failed, fallback to copying the file
-                        print("filter failed: {}".format(e.message))
+                        # filter failed, fallback to copying the file rather than losing data
                         remote_dir.copy(f, outfiletarget)
                 else:
                     outfiletarget = 'file://localhost/' + local_job_dir
@@ -226,7 +234,7 @@ def stage_output_files(remote_working_dir, local_job_dir, service, filter):
             else:
                 path = str(f)
                 local_copy_dir = os.path.join(local_job_dir, path)
-                copy_remote_directory_to_local(remote_dir.open_dir(f), local_copy_dir, filter)
+                copy_remote_directory_to_local(remote_dir.open_dir(f), local_copy_dir, base_url, filter)
 
         return 0
 

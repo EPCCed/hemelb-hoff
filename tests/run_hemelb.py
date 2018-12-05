@@ -6,9 +6,7 @@ import os
 import argparse
 import time
 import warnings
-
-from test_params import LOGIN_URL, JOBS_URL, PEM_CERTIFICATE
-from test_params import login_credentials
+import json
 
 
 def get_gmy_filename_from_xml(xml_filename):
@@ -18,7 +16,7 @@ def get_gmy_filename_from_xml(xml_filename):
     return gmy_filename
 
 
-def download_file(job_id, filename, output_dir, session):
+def download_file(JOBS_URL, job_id, filename, output_dir, session):
     file_url = JOBS_URL + "/" + job_id + "/files/" + filename
     local_filename = os.path.join(output_dir, filename)
 
@@ -32,8 +30,19 @@ def download_file(job_id, filename, output_dir, session):
                 f.write(chunk)
 
 
-def submit_and_fetch_simulation(xml_file, gmy_file, template_name, output_dir):
+def submit_and_fetch_simulation(conf, xml_file, gmy_file, template_name, output_dir):
     with requests.Session() as s:
+
+
+        login_credentials = {
+            'email': conf['username'],
+            'password': conf['password']
+        }
+
+        BASE_URL = conf['server_url']
+        PEM_CERTIFICATE = conf['pem_cert_path']
+        LOGIN_URL = BASE_URL + "/admin/login/"
+        JOBS_URL = BASE_URL + "/jobs"
 
         # log into the Hoff
         p = s.post(LOGIN_URL, data=login_credentials, verify=PEM_CERTIFICATE)
@@ -97,7 +106,7 @@ def submit_and_fetch_simulation(xml_file, gmy_file, template_name, output_dir):
 
         # download the files
         for f in file_list:
-            download_file(job_id, f, output_dir, s)
+            download_file(JOBS_URL, job_id, f, output_dir, s)
 
         # delete the job
         delete_url = JOBS_URL + "/" + str(job_id)
@@ -111,12 +120,19 @@ if __name__ == '__main__':
         parser = argparse.ArgumentParser(description='Submit a HemeLB simulation')
         parser.add_argument('xml_file', help='HemeLB XML input file')
         parser.add_argument('template_name', help='template name')
+        parser.add_argument('conf_file', help='Configuration file')
         args = parser.parse_args()
         xml_file = args.xml_file
+        conf_file = args.conf_file
         template_name = args.template_name
-        output_dir = os.path.join(os.getcwd(), "output")
+        output_dir = os.getcwd()
         gmy_file = get_gmy_filename_from_xml(xml_file)
-        submit_and_fetch_simulation(xml_file, gmy_file, template_name, output_dir)
+
+        conf = None
+        with open(conf_file, 'r') as f:
+            conf = json.load(f)
+
+        submit_and_fetch_simulation(conf, xml_file, gmy_file, template_name, output_dir)
 
 
 

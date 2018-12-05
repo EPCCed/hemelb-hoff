@@ -238,10 +238,10 @@ def testInputSet():
 
 
 def main():
-    testJob()
+    #testJob()
     #testInputSet()
     #testJobLimit()
-    #testTemplate()
+    testTemplate()
 
 
 

@@ -5,6 +5,7 @@ import requests
 import os
 import argparse
 import time
+import warnings
 
 from test_params import LOGIN_URL, JOBS_URL, PEM_CERTIFICATE
 from test_params import login_credentials
@@ -105,15 +106,17 @@ def submit_and_fetch_simulation(xml_file, gmy_file, template_name, output_dir):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Submit a HemeLB simulation')
-    parser.add_argument('xml_file', help='HemeLB XML input file')
-    parser.add_argument('template_name', help='template name')
-    args = parser.parse_args()
-    xml_file = args.xml_file
-    template_name = args.template_name
-    output_dir = os.path.join(os.getcwd(), "output")
-    gmy_file = get_gmy_filename_from_xml(xml_file)
-    submit_and_fetch_simulation(xml_file, gmy_file, template_name, output_dir)
+    with warnings.catch_warnings() as w:
+        warnings.simplefilter("ignore")
+        parser = argparse.ArgumentParser(description='Submit a HemeLB simulation')
+        parser.add_argument('xml_file', help='HemeLB XML input file')
+        parser.add_argument('template_name', help='template name')
+        args = parser.parse_args()
+        xml_file = args.xml_file
+        template_name = args.template_name
+        output_dir = os.path.join(os.getcwd(), "output")
+        gmy_file = get_gmy_filename_from_xml(xml_file)
+        submit_and_fetch_simulation(xml_file, gmy_file, template_name, output_dir)
 
 
 

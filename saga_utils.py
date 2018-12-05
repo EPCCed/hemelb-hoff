@@ -128,8 +128,8 @@ def submit_saga_job(job_description, service):
             jd.spmd_variation = extended
 
         # specify where the job's stdout and stderr will go
-        jd.output = 'job.stdout'
-        jd.error = 'job.stderr'
+        jd.output = JOB_STDOUT
+        jd.error = JOB_STDERR
 
         # specify the working directory for the job
         jd.working_directory = REMOTE_WORKING_DIR
@@ -216,6 +216,15 @@ def stage_output_files(remote_working_dir, local_job_dir, service, filter):
 
         remote_dir = saga.filesystem.Directory(service['file_url'] + remote_working_dir, session=session)
         base_url = str(remote_dir.get_url()) + "/"
+
+        # always copy the stdout / stderr files
+        try:
+            for f in [JOB_STDERR, JOB_STDOUT]:
+                outfiletarget = 'file://localhost/' + local_job_dir
+                remote_dir.copy(f, outfiletarget)
+        except Exception as e:
+            # TODO - logging?
+            print(e.message)
 
         for f in remote_dir.list():
             if remote_dir.is_file(f):

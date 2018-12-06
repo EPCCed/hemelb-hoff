@@ -98,6 +98,57 @@ class JobModel(db.Model):
     last_modified = db.Column(db.Date())
 
 
+
+
+class ServiceModel(db.Model):
+    __tablename__ = 'SERVICE'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String, nullable=False)
+
+    def __repr__(self):
+        return self.name
+
+
+# model for managing job templates
+class JobTemplateModel(db.Model):
+
+    __tablename__ = 'JOB_TEMPLATE'
+    id = db.Column(db.Integer(), primary_key=True)
+    service_id = db.Column(db.Integer(), db.ForeignKey('SERVICE.id'), nullable=False)
+    service = db.relationship("ServiceModel", foreign_keys=[service_id])
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(80))
+    executable = db.Column(db.String(255))
+    num_total_cpus = db.Column(db.Integer())
+    total_physical_memory = db.Column(db.String(80))
+    wallclock_limit = db.Column(db.String(80))
+    project = db.Column(db.String(80))
+    queue = db.Column(db.String(80))
+    arguments = db.Column(db.String(256))
+
+
+    def __repr__(self):
+        return self.name
+
+
+
+class JobTemplateModelView(ModelView):
+
+
+    # we need the current user's id for an insert
+    def on_model_change(self, form, model, is_created):
+        if is_created:
+            model.user_id = current_user.id
+
+    def is_accessible(self):
+        if current_user.has_role(SUPERUSER_ROLE):
+            return True
+        else:
+            return False
+
+
+
+
 class ReadOnlyModelView(ModelView):
 
     can_create = False
@@ -219,6 +270,7 @@ class RoleModelView(sqla.ModelView):
 admin.add_view(RoleModelView(Role, db.session))
 admin.add_view(UserModelView(User, db.session))
 admin.add_view(ReadOnlyModelView(JobModel, db.session))
+admin.add_view(JobTemplateModelView(JobTemplateModel, db.session))
 
 
 # rest endpoint definitions

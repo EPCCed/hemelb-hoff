@@ -225,23 +225,30 @@ def testInputSet():
         # delete one of the files, then check the hashcode has changed
 
         delete_url = INPUTSETS_URL + "/" + str(id) + "/files/" + listing[0]
-        print delete_url
         p = s.delete(delete_url, verify=PEM_CERTIFICATE)
         assert p.status_code == 200
 
-        hash_url = INPUTSETS_URL + "/" + str(id) + "/hash"
-        p = s.get(file_url, verify=PEM_CERTIFICATE)
+        p = s.get(hash_url, verify=PEM_CERTIFICATE)
         assert p.status_code == 200
         hash2 = p.content
-
         assert hash1 != hash2
+
+        # finally delete the inputset.
+        # further attempts to retrieve it should fail
+        delete_url = INPUTSETS_URL + "/" + str(id)
+        p = s.delete(delete_url, verify=PEM_CERTIFICATE)
+        assert p.status_code == 200
+        p = s.get(file_url, verify=PEM_CERTIFICATE)
+        assert p.status_code == 404
+
+
 
 
 def main():
     #testJob()
-    #testInputSet()
+    testInputSet()
     #testJobLimit()
-    testTemplate()
+    #testTemplate()
 
 
 

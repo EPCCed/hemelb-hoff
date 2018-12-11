@@ -804,7 +804,7 @@ def get_inputset_hash(id):
     # check the input set directory exists
     dir = os.path.join(INPUTSET_STAGING_AREA, id)
     if not os.path.exists(dir):
-        abort(500, "input set directory does not exist")
+        abort(404, "input set directory does not exist")
 
     hash = compute_hash_for_dir_contents(dir)
 
@@ -861,6 +861,10 @@ def get_inputset_file_list(id):
 
     filelist = []
     base_dir = os.path.join(INPUTSET_STAGING_AREA, id)
+
+    if not os.path.exists(base_dir):
+        abort(404)
+
     for path, subdirs, files in os.walk(base_dir):
         for name in files:
             filelist.append( os.path.join(path, name).replace(base_dir+"/",''))
@@ -894,6 +898,32 @@ def delete_inputset_file(id, filename):
     else:
         abort(404)
 
+
+
+@app.route('/inputsets/<id>',  methods=['DELETE'])
+@login_required
+def delete_inputset(id):
+
+    # quickly check if the inputset id is real
+    cmd = "SELECT id, user_id FROM INPUT_SET WHERE id=:id"
+    result = db.engine.execute(text(cmd), id=id)
+    r = result.fetchone()
+    if r is None:
+        abort(404)
+    user_id = r['user_id']
+
+    # normal users can only see their own assets
+    if int(user_id) != int(current_user.get_id()):
+        if not ( current_user.has_role(SUPERUSER_ROLE) or current_user.has_role(POWERUSER_ROLE)):
+            abort(403)
+
+    # delete the inputset directory if it exists, otherwise return a not found
+    dirpath = os.path.join(INPUTSET_STAGING_AREA, id)
+    if os.path.exists(dirpath):
+        shutil.rmtree(dirpath)
+        return 'Deleted', 200, {'Content-Type': 'text/plain'}
+    else:
+        abort(404)
 
 
 

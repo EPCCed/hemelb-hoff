@@ -17,11 +17,30 @@ payload['num_total_cpus'] = 36
 payload['wallclock_limit'] = 5
 payload['project'] = "d411-polnet"
 payload['arguments'] = "test.xml"
-#payload['filter'] = "results\/.*"
+payload['filter'] = "results\/.*"
+payload['extended'] = "#PBS -l place=scatter:excl"
 
 small_files = { 'config.gmy': open('/home/ubuntu/config.gmy','rb'),
           'test.xml': open('/home/ubuntu/config.xml','rb')
         }
+
+big_files = {
+    'big_file_1.dat': open('/home/ubuntu/big_file_1.dat','rb'),
+    'big_file_2.dat': open('/home/ubuntu/big_file_2.dat','rb'),
+    'big_file_3.dat': open('/home/ubuntu/big_file_3.dat','rb')
+}
+
+
+lisa_payload = {}
+lisa_payload['name'] = "polnet_test"
+lisa_payload['service'] = "LISA"
+lisa_payload['executable'] = "/home/millingw/submit.sh"
+lisa_payload['num_total_cpus'] = 4
+lisa_payload['wallclock_limit'] = 5
+#payload['project'] = "d411-polnet"
+lisa_payload['arguments'] = "test.xml"
+lisa_payload['filter'] = "results\/.*"
+#payload['extended'] = "#PBS -l place=scatter:excl"
 
 
 def testJob():
@@ -43,6 +62,11 @@ def testJob():
         file_url = JOBS_URL + "/" + str(job_id) + "/files"
         p = s.post(file_url, files=small_files, verify = PEM_CERTIFICATE)
         assert p.status_code == 200
+
+        # upload the big input files, just to make sure things don't fall over under stress
+        #file_url = JOBS_URL + "/" + str(job_id) + "/files"
+        #p = s.post(file_url, files=big_files, verify=PEM_CERTIFICATE)
+        #assert p.status_code == 200
 
 
         #submit the job
@@ -85,6 +109,75 @@ def testJob():
         state = p.content
         print "final state is " + state
         assert state == 'DELETED'
+
+
+
+def testLisaJob():
+
+    with requests.Session() as s:
+
+        p = s.post(LOGIN_URL, data=login_credentials, verify = PEM_CERTIFICATE)
+        # print the html returned or something more intelligent to see if it's a successful login page.
+        assert p.status_code == 200
+
+        # An authorised request.
+        p = s.post(JOBS_URL, json=lisa_payload, verify = PEM_CERTIFICATE)
+        print p.content
+        assert p.status_code == 200
+        job_id = p.content
+        print job_id
+
+        #upload the small input files
+        file_url = JOBS_URL + "/" + str(job_id) + "/files"
+        p = s.post(file_url, files=small_files, verify = PEM_CERTIFICATE)
+        assert p.status_code == 200
+
+        # upload the big input files, just to make sure things don't fall over under stress
+#        file_url = JOBS_URL + "/" + str(job_id) + "/files"
+#        p = s.post(file_url, files=big_files, verify=PEM_CERTIFICATE)
+#        assert p.status_code == 200
+
+
+        #submit the job
+        post_url = JOBS_URL + "/" + str(job_id) + "/submit"
+        p = s.post(post_url, verify = PEM_CERTIFICATE)
+        assert p.status_code == 200
+        print p.text
+
+        #wait for completion
+        get_url = JOBS_URL + "/" + str(job_id) + "/state"
+        p = s.get(get_url, verify = PEM_CERTIFICATE)
+        assert p.status_code == 200
+        state = p.content
+
+        while state not in ['Done', 'Failed']:
+            time.sleep(60)
+            p = s.get(get_url, verify = PEM_CERTIFICATE)
+            assert p.status_code == 200
+            state = p.content
+            print state
+
+        file_list_url = JOBS_URL + "/" + str(job_id) + "/files"
+        p = s.get(file_list_url, verify=PEM_CERTIFICATE)
+        assert p.status_code == 200
+        file_list = p.json()
+
+        for f in file_list:
+            print f
+
+
+        #print "deleting job"
+        #delete_url = JOBS_URL + "/" + str(job_id)
+        #p = s.delete(delete_url, verify = PEM_CERTIFICATE)
+        #assert p.status_code == 200
+        #print p.status_code
+
+        #print "checking deleted state"
+        #get_url = JOBS_URL + "/" + str(job_id) + "/state"
+        #p = s.get(get_url, verify = PEM_CERTIFICATE)
+        #state = p.content
+        #print "final state is " + state
+        #assert state == 'DELETED'
 
 
 # submit a job by specifying a template name rather than providing a job description
@@ -245,8 +338,9 @@ def testInputSet():
 
 
 def main():
+    testLisaJob()
     #testJob()
-    testInputSet()
+    #testInputSet()
     #testJobLimit()
     #testTemplate()
 

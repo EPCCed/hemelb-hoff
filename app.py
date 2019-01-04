@@ -24,6 +24,7 @@ from saga_utils import stage_output_files, cleanup_directory
 from werkzeug.utils import secure_filename
 import shutil
 import re
+from remote_command import run_remote_command
 
 # role definitions
 SUPERUSER_ROLE = 'superuser'
@@ -512,20 +513,19 @@ def get_job_description(id):
     return jsonify(jd)
 
 
-@app.route('/jobs/<id>/submit',  methods=['POST'])
-@login_required
 def submit_job(id):
-
-    # only the owner of a job can submit it
 
     cmd = "SELECT * FROM JOB WHERE local_job_id=:local_job_id"
     result = db.engine.execute(text(cmd), local_job_id=id).fetchone()
 
-    if(int(result['user_id']) != int(current_user.get_id())):
-        abort(403)
+    if result is None:
+        app.logger.error("Error submitting job, job not found")
+        return
 
     if result['state'] != "NEW":
-        abort("inconsistent state", 500)
+        app.logger.error("Error submitting job, inconsistent state")
+        return
+
     jd = {}
     jd['local_job_id'] = result['local_job_id']
     jd['name'] = result['name']
@@ -543,15 +543,18 @@ def submit_job(id):
     jd['wallclock_limit'] = result['wallclock_limit']
     jd['project'] = result['project']
     jd['queue'] = result['queue']
-
+    jd['extended'] = result['extended']
 
     # if env is specified, we need to turn the arguments into a dict
-    #if result['env'] is not None:
+    # if result['env'] is not None:
     #    try:
     #        jd['env'] = ast.literal_eval(result['env'])
     #        print type(jd['env']), jd['env']
     #    except Exception as e:
     #        abort(500, "couldn't convert env parameter to a dict")
+
+    cmd = "UPDATE JOB SET state=:state WHERE local_job_id=:local_job_id"
+    db.engine.execute(text(cmd), state="STAGING", local_job_id=id)
 
     local_input_file_dir = os.path.join(INPUT_STAGING_AREA, jd['local_job_id'])
 
@@ -564,14 +567,18 @@ def submit_job(id):
             saga_utils.stage_input_files(id, input_set_dir, service)
         except Exception as e:
             app.logger.error(e.message)
-            abort(500, e.message)
+            cmd = "UPDATE JOB SET state=:state WHERE local_job_id=:local_job_id"
+            db.engine.execute(text(cmd), state="STAGING_FAILED", local_job_id=id)
+            return
 
     # stage any input files uploaded for this job
     try:
         saga_utils.stage_input_files(id, local_input_file_dir, service)
     except Exception as e:
         app.logger.error(e.message)
-        abort(500, e.message)
+        cmd = "UPDATE JOB SET state=:state WHERE local_job_id=:local_job_id"
+        db.engine.execute(text(cmd), state="STAGING_FAILED", local_job_id=id)
+        return
 
     # kick off the job and get an id for tracking the remote job state
     remote_job_id = None
@@ -579,15 +586,41 @@ def submit_job(id):
         remote_job_id = saga_utils.submit_saga_job(jd, service)
     except Exception as e:
         app.logger.error(e.message)
-        abort(500, e.message)
+        cmd = "UPDATE JOB SET state=:state WHERE local_job_id=:local_job_id"
+        db.engine.execute(text(cmd), state="FAILED", local_job_id=id)
+        return
 
     if remote_job_id != -1:
         # update database
         cmd = "UPDATE JOB SET state=:state, remote_job_id=:remote_job_id WHERE local_job_id=:local_job_id"
         db.engine.execute(text(cmd), state="SUBMITTED", remote_job_id=remote_job_id, local_job_id=id)
-        return 'Submitted', 200, {'Content-Type': 'text/plain'}
     else:
-        abort(500, "error submitting job")
+        cmd = "UPDATE JOB SET state=:state WHERE local_job_id=:local_job_id"
+        db.engine.execute(text(cmd), state="FAILED", local_job_id=id)
+
+
+@app.route('/jobs/<id>/submit',  methods=['POST'])
+@login_required
+def handle_submit_job(id):
+
+    # only the owner of a job can submit it
+
+    cmd = "SELECT * FROM JOB WHERE local_job_id=:local_job_id"
+    result = db.engine.execute(text(cmd), local_job_id=id).fetchone()
+
+    if result is None:
+        abort(404)
+
+    if(int(result['user_id']) != int(current_user.get_id())):
+        abort(403)
+
+    if result['state'] != "NEW":
+        abort("inconsistent state", 500)
+
+    scheduler.add_job(submit_job, args=[id])
+
+    return 'Success', 200, {'Content-Type': 'text/plain'}
+
 
 
 @app.route('/jobs/<id>/files',  methods=['POST'])
@@ -724,6 +757,7 @@ def delete_job(id):
         LOCAL_INPUT_DIR = os.path.join(INPUT_STAGING_AREA, str(id))
         if os.path.exists(LOCAL_INPUT_DIR):
             shutil.rmtree(LOCAL_INPUT_DIR)
+
 
         # update the job to show as deleted
         cmd = "UPDATE JOB SET state=:state WHERE local_job_id = :local_job_id"
@@ -982,6 +1016,7 @@ def get_service(service_id):
     service["working_directory"] = result["working_directory"]
     return service
 
+
 def retrieve_output_files(job_id):
     cmd = "SELECT remote_job_id, service_id, filter FROM JOB WHERE local_job_id=:local_job_id"
     result = db.engine.execute(text(cmd), local_job_id=job_id)
@@ -997,6 +1032,20 @@ def retrieve_output_files(job_id):
         try:
             stage_output_files(REMOTE_WORKING_DIR, local_file_dir, service, filter)
             cleanup_directory(REMOTE_WORKING_DIR, service)
+
+            # force delete the remote working directory, saga doesn't do nested subdirs
+            try:
+                scheduler_url = service["scheduler_url"]
+                index = scheduler_url.find('//')
+                server_name = scheduler_url[index + 2:]
+                cmd = "rm -rf " + REMOTE_WORKING_DIR
+                stdout, stderr = run_remote_command(server_name, service['username'], service['user_pass'], cmd)
+
+            except Exception as e:
+                print e.message
+
+
+
         except Exception as e:
             app.logger.error("retrieve_output_files:" + e.message)
 

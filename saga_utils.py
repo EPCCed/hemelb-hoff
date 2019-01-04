@@ -123,8 +123,10 @@ def submit_saga_job(job_description, service):
 
         # here we abuse the SAGA spec to pass through any scheduler-specific directives.
         # eg exclusive reservation of a node, or anything that SAGA does not directly support
+        print(job_description)
         extended = job_description.get('extended')
         if extended is not None:
+            print("setting {}".format(extended))
             jd.spmd_variation = extended
 
         # specify where the job's stdout and stderr will go

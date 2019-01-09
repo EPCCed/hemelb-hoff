@@ -348,29 +348,39 @@ def create_new_job():
 
     # now look at the rest of the payload; user-supplied arguments override template arguments
 
+    if 'arguments' in payload: job_spec['arguments'] = payload.get('arguments')
+
         # name, service, and executable are mandatory,
         # otherwise the job is pointless
 
-    if 'name' in payload: job_spec['job_name'] = payload['name']
-    if 'executable' in payload: job_spec['executable'] = payload['executable']
 
-    if 'service' in payload:
-        cmd = 'SELECT id FROM SERVICE where name=:name'
-        result = db.engine.execute(text(cmd), name=payload['service'])
-        job_spec['service_id'] = result.fetchone()['id']
 
-    # look for additional information, will set as NULL if not in payload
-    if 'arguments' in payload: job_spec['arguments'] = payload.get('arguments')
-    if 'num_total_cpus' in payload: job_spec['num_total_cpus'] = payload.get('num_total_cpus')
-    if 'total_physical_memory' in payload: job_spec['total_physical_memory'] = payload.get('total_physical_memory')
-    if 'wallclock_limit' in payload: job_spec['wallclock_limit'] = payload.get('wallclock_limit')
-    if 'project' in payload: job_spec['project'] = payload.get('project')
-    if 'queue' in payload: job_spec['queue'] = payload.get('queue')
-    if 'extended' in payload: job_spec['extended'] = payload.get('extended')
-    if 'input_set_id' in payload: job_spec['input_set_id'] = payload.get('input_set_id')
+    # for security reasons only powerusers or admins may override other aspects of the job
+    # otherwise, any additional information in the payload is ignored
 
-    if 'filter' in payload:
-        job_spec['filter'] = payload.get('filter')
+    if current_user.has_role(SUPERUSER_ROLE) or current_user.has_role(POWERUSER_ROLE):
+
+        if 'name' in payload: job_spec['job_name'] = payload['name']
+
+        if 'executable' in payload: job_spec['executable'] = payload['executable']
+
+        if 'service' in payload:
+            cmd = 'SELECT id FROM SERVICE where name=:name'
+            result = db.engine.execute(text(cmd), name=payload['service'])
+            job_spec['service_id'] = result.fetchone()['id']
+
+        # look for additional information, will set as NULL if not in payload
+
+        if 'num_total_cpus' in payload: job_spec['num_total_cpus'] = payload.get('num_total_cpus')
+        if 'total_physical_memory' in payload: job_spec['total_physical_memory'] = payload.get('total_physical_memory')
+        if 'wallclock_limit' in payload: job_spec['wallclock_limit'] = payload.get('wallclock_limit')
+        if 'project' in payload: job_spec['project'] = payload.get('project')
+        if 'queue' in payload: job_spec['queue'] = payload.get('queue')
+        if 'extended' in payload: job_spec['extended'] = payload.get('extended')
+        if 'input_set_id' in payload: job_spec['input_set_id'] = payload.get('input_set_id')
+
+        if 'filter' in payload:
+            job_spec['filter'] = payload.get('filter')
 
 
     # sanity check the filter rather than have it fail later
@@ -1033,7 +1043,7 @@ def retrieve_output_files(job_id):
             stage_output_files(REMOTE_WORKING_DIR, local_file_dir, service, filter)
             cleanup_directory(REMOTE_WORKING_DIR, service)
 
-            # force delete the remote working directory, saga doesn't do nested subdirs
+            # force delete the remote working directory, saga doesn't currently do nested subdirs
             try:
                 scheduler_url = service["scheduler_url"]
                 index = scheduler_url.find('//')

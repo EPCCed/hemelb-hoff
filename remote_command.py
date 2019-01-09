@@ -19,7 +19,3 @@ def run_remote_command(server, username, passphrase, command):
 
 
 
-if __name__ == "__main__":
-    stdout, stderr = run_remote_command(server="lisa.surfsara.nl", username="millingw",
-                       passphrase="Ukprd1278!", command="ls -l")
-    print stdout, stderr

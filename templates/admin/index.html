@@ -1,21 +1,42 @@
 {% extends 'admin/master.html' %}
 {% block body %}
 {{ super() }}
-<div class="container">
-    <div class="row">
-        <div class="col-sm-10 col-sm-offset-1">
-            <h1>HemelB Offload Service ("The Hoff")</h1>
 
 
-            {% if not current_user.is_authenticated %}
-            <p>Please login to use the system
 
-            <p>
-                <a class="btn btn-primary" href="{{ url_for('security.login') }}">login</a>
-            </p>
-            {% endif %}
+<div class="jumbotron jumbotron-fluid">
 
-        </div>
-    </div>
+
+  <h1 class="display-4">HemelB Offload Service</h1>
+  <p class="lead">This service provides a set of simple REST endpoints to allow remote execution and management of HemelB simulations on EPCC's CIRRUS service and SURFSara's LISA service</p>
+  <hr class="my-4">
+  <p>The service is used by the PolNet workflow suite to allow computationally demanding simulations to be executed remotely rather than on the user's local workstation</p>
+
+    <p>This work is funded under CompBioMed Work Package 5.</p>
+    <p><a href="https://www.compbiomed.eu">
+                            <img border="0" alt="CompBioMed" src="https://www.compbiomed.eu/wp-content/uploads/2016/09/compbiomed_long_logo.png" >
+                        </a></p>
+
+    {% if not current_user.is_authenticated %}
+
+    <a class="btn btn-primary btn-lg"  href="{{ url_for('security.login') }}" role="button">Login</a>
+
+    {% endif %}
+
+    <hr class="my-4">
+    <p>External Links</p>
+
+ <p><a href="https://www.compbiomed.eu">CompBioMed</a></p>
+    <p><a href="http://www.epcc.ed.ac.uk/facilities/demand-computing/cirrus">Cirrus</a></p>
+    <p><a href="https://userinfo.surfsara.nl/systems/lisa">LISA</a></p>
+    <p><a href="https://www.ncbi.nlm.nih.gov/pubmed/29742399">PolNet</a></p>
+
 </div>
+
+
+
+
+
+
+
 {% endblock body %}

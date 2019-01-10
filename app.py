@@ -38,7 +38,7 @@ app = Flask(__name__, static_url_path='/home/ubuntu/PycharmProjects/hemelb-hoff/
 app.config.from_pyfile('config.py')
 
 
-admin = Admin(app, name='Hoff', template_mode='bootstrap3', base_template='master.html',)
+admin = Admin(app, name='HemelB Offload Service', template_mode='bootstrap3', base_template='master.html')
 
 # add database connection
 app.config['SECRET_KEY'] = SECRET_KEY

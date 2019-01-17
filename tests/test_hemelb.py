@@ -2,7 +2,7 @@ import requests
 import time
 from config import MAX_USER_JOBS
 import uuid
-from tests.test_params import LOGIN_URL, JOBS_URL, INPUTSETS_URL, PEM_CERTIFICATE, TEST_TEMPLATE_NAME
+from tests.test_params import LOGIN_URL, JOBS_URL, INPUTSETS_URL, TEST_TEMPLATE_NAME
 from tests.test_params import login_credentials
 
 
@@ -47,12 +47,12 @@ def testJob():
 
     with requests.Session() as s:
 
-        p = s.post(LOGIN_URL, data=login_credentials, verify = PEM_CERTIFICATE)
+        p = s.post(LOGIN_URL, data=login_credentials)
         # print the html returned or something more intelligent to see if it's a successful login page.
         assert p.status_code == 200
 
         # An authorised request.
-        p = s.post(JOBS_URL, json=payload, verify = PEM_CERTIFICATE)
+        p = s.post(JOBS_URL, json=payload)
         print p.content
         assert p.status_code == 200
         job_id = p.content
@@ -60,7 +60,7 @@ def testJob():
 
         #upload the small input files
         file_url = JOBS_URL + "/" + str(job_id) + "/files"
-        p = s.post(file_url, files=small_files, verify = PEM_CERTIFICATE)
+        p = s.post(file_url, files=small_files)
         assert p.status_code == 200
 
         # upload the big input files, just to make sure things don't fall over under stress
@@ -71,25 +71,25 @@ def testJob():
 
         #submit the job
         post_url = JOBS_URL + "/" + str(job_id) + "/submit"
-        p = s.post(post_url, verify = PEM_CERTIFICATE)
+        p = s.post(post_url)
         assert p.status_code == 200
         print p.text
 
         #wait for completion
         get_url = JOBS_URL + "/" + str(job_id) + "/state"
-        p = s.get(get_url, verify = PEM_CERTIFICATE)
+        p = s.get(get_url)
         assert p.status_code == 200
         state = p.content
 
         while state not in ['Done', 'Failed']:
             time.sleep(60)
-            p = s.get(get_url, verify = PEM_CERTIFICATE)
+            p = s.get(get_url)
             assert p.status_code == 200
             state = p.content
             print state
 
         file_list_url = JOBS_URL + "/" + str(job_id) + "/files"
-        p = s.get(file_list_url, verify=PEM_CERTIFICATE)
+        p = s.get(file_list_url)
         assert p.status_code == 200
         file_list = p.json()
 
@@ -99,13 +99,13 @@ def testJob():
 
         print "deleting job"
         delete_url = JOBS_URL + "/" + str(job_id)
-        p = s.delete(delete_url, verify = PEM_CERTIFICATE)
+        p = s.delete(delete_url)
         assert p.status_code == 200
         print p.status_code
 
         print "checking deleted state"
         get_url = JOBS_URL + "/" + str(job_id) + "/state"
-        p = s.get(get_url, verify = PEM_CERTIFICATE)
+        p = s.get(get_url)
         state = p.content
         print "final state is " + state
         assert state == 'DELETED'
@@ -116,12 +116,14 @@ def testLisaJob():
 
     with requests.Session() as s:
 
-        p = s.post(LOGIN_URL, data=login_credentials, verify = PEM_CERTIFICATE)
+
+
+        p = s.post(LOGIN_URL, data=login_credentials)
         # print the html returned or something more intelligent to see if it's a successful login page.
         assert p.status_code == 200
 
         # An authorised request.
-        p = s.post(JOBS_URL, json=lisa_payload, verify = PEM_CERTIFICATE)
+        p = s.post(JOBS_URL, json=lisa_payload)
         print p.content
         assert p.status_code == 200
         job_id = p.content
@@ -129,7 +131,7 @@ def testLisaJob():
 
         #upload the small input files
         file_url = JOBS_URL + "/" + str(job_id) + "/files"
-        p = s.post(file_url, files=small_files, verify = PEM_CERTIFICATE)
+        p = s.post(file_url, files=small_files)
         assert p.status_code == 200
 
         # upload the big input files, just to make sure things don't fall over under stress
@@ -140,25 +142,25 @@ def testLisaJob():
 
         #submit the job
         post_url = JOBS_URL + "/" + str(job_id) + "/submit"
-        p = s.post(post_url, verify = PEM_CERTIFICATE)
+        p = s.post(post_url)
         assert p.status_code == 200
         print p.text
 
         #wait for completion
         get_url = JOBS_URL + "/" + str(job_id) + "/state"
-        p = s.get(get_url, verify = PEM_CERTIFICATE)
+        p = s.get(get_url)
         assert p.status_code == 200
         state = p.content
 
         while state not in ['Done', 'Failed']:
             time.sleep(60)
-            p = s.get(get_url, verify = PEM_CERTIFICATE)
+            p = s.get(get_url)
             assert p.status_code == 200
             state = p.content
             print state
 
         file_list_url = JOBS_URL + "/" + str(job_id) + "/files"
-        p = s.get(file_list_url, verify=PEM_CERTIFICATE)
+        p = s.get(file_list_url)
         assert p.status_code == 200
         file_list = p.json()
 
@@ -166,18 +168,18 @@ def testLisaJob():
             print f
 
 
-        #print "deleting job"
-        #delete_url = JOBS_URL + "/" + str(job_id)
-        #p = s.delete(delete_url, verify = PEM_CERTIFICATE)
-        #assert p.status_code == 200
-        #print p.status_code
+        print "deleting job"
+        delete_url = JOBS_URL + "/" + str(job_id)
+        p = s.delete(delete_url)
+        assert p.status_code == 200
+        print p.status_code
 
-        #print "checking deleted state"
-        #get_url = JOBS_URL + "/" + str(job_id) + "/state"
-        #p = s.get(get_url, verify = PEM_CERTIFICATE)
-        #state = p.content
-        #print "final state is " + state
-        #assert state == 'DELETED'
+        print "checking deleted state"
+        get_url = JOBS_URL + "/" + str(job_id) + "/state"
+        p = s.get(get_url)
+        state = p.content
+        print "final state is " + state
+        assert state == 'DELETED'
 
 
 # submit a job by specifying a template name rather than providing a job description
@@ -185,49 +187,49 @@ def testTemplate():
 
     with requests.Session() as s:
 
-        p = s.post(LOGIN_URL, data=login_credentials, verify = PEM_CERTIFICATE)
+        p = s.post(LOGIN_URL, data=login_credentials)
         # print the html returned or something more intelligent to see if it's a successful login page.
         assert p.status_code == 200
 
         # try a non-existent template and make sure it behaves itself
         template_payload = {'template_name': "fdsfsdfsdsdfsdfsdfsdfsdfsdfs"}
-        p = s.post(JOBS_URL, json=template_payload, verify=PEM_CERTIFICATE)
+        p = s.post(JOBS_URL, json=template_payload)
         assert p.status_code == 404
 
         # now try a real one
         template_payload = {'template_name': TEST_TEMPLATE_NAME, 'arguments': "test.xml" }
-        p = s.post(JOBS_URL, json=template_payload, verify = PEM_CERTIFICATE)
+        p = s.post(JOBS_URL, json=template_payload)
         assert p.status_code == 200
         job_id = p.content
         print job_id
 
         #upload the small input files
         file_url = JOBS_URL + "/" + str(job_id) + "/files"
-        p = s.post(file_url, files=small_files, verify = PEM_CERTIFICATE)
+        p = s.post(file_url, files=small_files)
         assert p.status_code == 200
 
 
         #submit the job
         post_url = JOBS_URL + "/" + str(job_id) + "/submit"
-        p = s.post(post_url, verify = PEM_CERTIFICATE)
+        p = s.post(post_url)
         assert p.status_code == 200
         print p.text
 
         #wait for completion
         get_url = JOBS_URL + "/" + str(job_id) + "/state"
-        p = s.get(get_url, verify = PEM_CERTIFICATE)
+        p = s.get(get_url)
         assert p.status_code == 200
         state = p.content
 
         while state not in ['Done', 'Failed']:
             time.sleep(60)
-            p = s.get(get_url, verify = PEM_CERTIFICATE)
+            p = s.get(get_url)
             assert p.status_code == 200
             state = p.content
             print state
 
         file_list_url = JOBS_URL + "/" + str(job_id) + "/files"
-        p = s.get(file_list_url, verify=PEM_CERTIFICATE)
+        p = s.get(file_list_url)
         assert p.status_code == 200
         file_list = p.json()
 
@@ -236,13 +238,13 @@ def testTemplate():
 
         print "deleting job"
         delete_url = JOBS_URL + "/" + str(job_id)
-        p = s.delete(delete_url, verify = PEM_CERTIFICATE)
+        p = s.delete(delete_url)
         assert p.status_code == 200
         print p.status_code
 
         print "checking deleted state"
         get_url = JOBS_URL + "/" + str(job_id) + "/state"
-        p = s.get(get_url, verify = PEM_CERTIFICATE)
+        p = s.get(get_url)
         state = p.content
         print "final state is " + state
         assert state == 'DELETED'
@@ -287,41 +289,41 @@ def testJobLimit():
 def testInputSet():
 
     with requests.Session() as s:
-        p = s.post(LOGIN_URL, data=login_credentials, verify = PEM_CERTIFICATE)
+        p = s.post(LOGIN_URL, data=login_credentials)
         # print the html returned or something more intelligent to see if it's a successful login page.
         assert p.status_code == 200
 
         name = uuid.uuid4()
 
         # An authorised request.
-        p = s.post(INPUTSETS_URL, data={'name': str(name)}, verify = PEM_CERTIFICATE)
+        p = s.post(INPUTSETS_URL, data={'name': str(name)})
         assert p.status_code == 200
 
         id = p.content
 
         # upload the small input files
         file_url = INPUTSETS_URL + "/" + str(id) + "/files"
-        p = s.post(file_url, files=small_files, verify = PEM_CERTIFICATE)
+        p = s.post(file_url, files=small_files)
         assert p.status_code == 200
 
         # list the files
-        p = s.get(file_url, verify = PEM_CERTIFICATE)
+        p = s.get(file_url)
         assert p.status_code == 200
         listing = p.json()
 
         # get the hashcode
         hash_url = INPUTSETS_URL + "/" + str(id) + "/hash"
-        p = s.get(file_url, verify=PEM_CERTIFICATE)
+        p = s.get(file_url)
         assert p.status_code == 200
         hash1 = p.content
 
         # delete one of the files, then check the hashcode has changed
 
         delete_url = INPUTSETS_URL + "/" + str(id) + "/files/" + listing[0]
-        p = s.delete(delete_url, verify=PEM_CERTIFICATE)
+        p = s.delete(delete_url)
         assert p.status_code == 200
 
-        p = s.get(hash_url, verify=PEM_CERTIFICATE)
+        p = s.get(hash_url)
         assert p.status_code == 200
         hash2 = p.content
         assert hash1 != hash2
@@ -329,19 +331,19 @@ def testInputSet():
         # finally delete the inputset.
         # further attempts to retrieve it should fail
         delete_url = INPUTSETS_URL + "/" + str(id)
-        p = s.delete(delete_url, verify=PEM_CERTIFICATE)
+        p = s.delete(delete_url)
         assert p.status_code == 200
-        p = s.get(file_url, verify=PEM_CERTIFICATE)
+        p = s.get(file_url)
         assert p.status_code == 404
 
 
 
 
 def main():
-    testLisaJob()
+    #testLisaJob()
     #testJob()
     #testInputSet()
-    #testJobLimit()
+    testJobLimit()
     #testTemplate()
 
 

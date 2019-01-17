@@ -126,6 +126,7 @@ class JobTemplateModel(db.Model):
     project = db.Column(db.String(80))
     queue = db.Column(db.String(80))
     arguments = db.Column(db.String(256))
+    filter = db.Column(db.String(256))
 
 
     def __repr__(self):

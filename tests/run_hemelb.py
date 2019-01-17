@@ -40,12 +40,11 @@ def submit_and_fetch_simulation(conf, xml_file, gmy_file, template_name, output_
         }
 
         BASE_URL = conf['server_url']
-        PEM_CERTIFICATE = conf['pem_cert_path']
         LOGIN_URL = BASE_URL + "/admin/login/"
         JOBS_URL = BASE_URL + "/jobs"
 
         # log into the Hoff
-        p = s.post(LOGIN_URL, data=login_credentials, verify=PEM_CERTIFICATE)
+        p = s.post(LOGIN_URL, data=login_credentials)
         # check we logged in ok
         assert p.status_code == 200
 
@@ -55,7 +54,7 @@ def submit_and_fetch_simulation(conf, xml_file, gmy_file, template_name, output_
         payload['arguments'] = xml_file
 
         # Post the job spec, job is created with NEW state
-        p = s.post(JOBS_URL, json=payload, verify=PEM_CERTIFICATE)
+        p = s.post(JOBS_URL, json=payload)
         assert p.status_code == 200
 
         # get the job id from the response
@@ -64,23 +63,23 @@ def submit_and_fetch_simulation(conf, xml_file, gmy_file, template_name, output_
         # upload the input files
         file_url = JOBS_URL + "/" + str(job_id) + "/files"
         input_files = {xml_file: open(xml_file, 'rb'), gmy_file: open(gmy_file, 'rb')}
-        p = s.post(file_url, files=input_files, verify=PEM_CERTIFICATE)
+        p = s.post(file_url, files=input_files)
         assert p.status_code == 200
 
         # submit the job
         post_url = JOBS_URL + "/" + str(job_id) + "/submit"
-        p = s.post(post_url, verify=PEM_CERTIFICATE)
+        p = s.post(post_url)
         assert p.status_code == 200
 
         # wait for completion
         get_url = JOBS_URL + "/" + str(job_id) + "/state"
-        p = s.get(get_url, verify=PEM_CERTIFICATE)
+        p = s.get(get_url)
         assert p.status_code == 200
         state = p.content
 
         while state not in ['Done', 'Failed']:
             time.sleep(30)
-            p = s.get(get_url, verify=PEM_CERTIFICATE)
+            p = s.get(get_url)
             assert p.status_code == 200
             state = p.content
 
@@ -88,19 +87,19 @@ def submit_and_fetch_simulation(conf, xml_file, gmy_file, template_name, output_
 
         # job has completed or failed. check to see if the job has been retrieved
         get_retrieved_state_url = JOBS_URL + "/" + str(job_id) + "/retrieved"
-        p = s.get(get_retrieved_state_url, verify=PEM_CERTIFICATE)
+        p = s.get(get_retrieved_state_url)
         assert p.status_code == 200
         retrieved = int(p.content)
 
         while retrieved != 1:
             time.sleep(30)
-            p = s.get(get_retrieved_state_url, verify=PEM_CERTIFICATE)
+            p = s.get(get_retrieved_state_url)
             assert p.status_code == 200
             retrieved = int(p.content)
 
         # get the list of output files
         file_list_url = JOBS_URL + "/" + str(job_id) + "/files"
-        p = s.get(file_list_url, verify=PEM_CERTIFICATE)
+        p = s.get(file_list_url)
         assert p.status_code == 200
         file_list = p.json()
 
@@ -110,7 +109,7 @@ def submit_and_fetch_simulation(conf, xml_file, gmy_file, template_name, output_
 
         # delete the job
         delete_url = JOBS_URL + "/" + str(job_id)
-        p = s.delete(delete_url, verify=PEM_CERTIFICATE)
+        p = s.delete(delete_url)
         assert p.status_code == 200
 
 

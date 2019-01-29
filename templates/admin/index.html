@@ -2,7 +2,17 @@
 {% block body %}
 {{ super() }}
 
-
+<style>
+.footer {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  background-color: gray;
+  color: white;
+  text-align: center;
+}
+</style>
 
 <div class="jumbotron jumbotron-fluid">
 
@@ -35,8 +45,11 @@
 
 
 
+<div class="footer">
 
+    This project has received funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement No 675451. All information in this website is provided “as is” and no guarantee or warranty is given that the information is fit for any particular purpose. The user, therefore, uses the information at its sole risk and liability. For the avoidance of all doubts, the European Commission has no liability in respect of this website, which is merely representing the authors’ view.
 
+	</div><!-- footer -->
 
 
 {% endblock body %}

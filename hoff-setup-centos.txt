@@ -1,0 +1,158 @@
+hoffserver setup: (instructions for a CentOs installation)
+----------------------------------------------------------
+
+sudo yum install epel-release
+
+# do *not* install the "standard" version of MariaDB for CentOS, its rather an old version
+# Instead, install MariaDB 10.3 following instructions on https://mariadb.com/kb/en/library/yum/
+
+# once installed, do the following to make MariaDB automatically start on reboot
+sudo systemctl start mariadb
+sudo systemctl enable mariadb
+sudo systemctl status mariadb
+
+# secure the MariaDB installation
+sudo mysql_secure_installation (set new root password when prompted)
+sudo yum install python-devel mysql-devel
+sudo yum install MySQL-python
+
+sudo yum install python-pip
+sudo yum install git
+
+# check out the hemelb-hoff project from https://github.com/millingw/hemelb-hoff
+git co https://github.com/millingw/hemelb-hoff
+
+# in the project directory, install the python dependencies
+sudo pip install -r reqs.txt
+
+	APScheduler==3.5.3
+	Flask==1.0.2
+	Flask-Admin==1.5.2
+	Flask-BabelEx==0.9.3
+	Flask-Login==0.4.1
+	Flask-Mail==0.9.1
+	Flask-Principal==0.4.0
+	Flask-Security==3.0.0
+	Flask-SQLAlchemy==2.3.2
+	Flask-WTF==0.14.2
+	radical.utils==0.50.2
+	requests==2.19.1
+	saga-python==0.50.0
+	SQLAlchemy==1.2.12
+
+# install paramiko and related libraries
+sudo yum install python-devel
+sudo yum install libffi-devel
+sudo yum install -y openssl-devel
+sudo pip install paramiko
+
+
+# login into the database as root, you'll be prompted for a password, use the password you defined above when securing the database
+mysql -u root -p
+
+#Database setup from sql file in project directory
+create database compbiomed;
+source compbiomed.sql;
+
+# create an account for the webservice to connect to the database
+create user 'webcompbiomed'@'localhost' identified by 'somepassword'; # set your own password here!
+# authorise the user for access to the data
+grant SELECT, INSERT, UPDATE, DELETE on compbiomed.* to 'webcompbiomed'@'localhost' identified by '***'; # set your own value for password
+
+# create an initial superuser acount within the web service
+insert into user(first_name, last_name, email, password, active) values("admin","admin","admin","***",1); # set your own values for name and password
+insert into role(name, description) values("superuser","superuser");
+
+# set the admin role
+insert into roles_users(role_id, user_id) values(1,1);
+
+# quit out of the database then continue with installation
+quit
+
+sudo pip install gunicorn
+sudo pip install uwsgi
+sudo pip install enum34
+
+
+#If you need to setup a server certificate setup this will depend on your OS type
+# lots of examples online, eg https://www.digitalocean.com/community/tutorials/how-to-create-a-self-signed-ssl-certificate-for-nginx-in-ubuntu-16-04
+
+# edit configuration settings in config.py
+# most settings can be left alone, however the following must be set to match the webcompbiomed user created in the database
+# assumes db and webserver are running on same machine
+SQLALCHEMY_DATABASE_URI = 'mysql://web:web@localhost/' + DATABASE_FILE
+
+# the following may also require editing.
+# these are the locations where input and output files are staged
+INPUT_STAGING_AREA = '/home/ubuntu/jobs/input'
+OUTPUT_STAGING_AREA = '/home/ubuntu/jobs/output'
+INPUTSET_STAGING_AREA = '/home/ubuntu/inputsets'
+
+
+# run application
+gunicorn --workers 3 --bind 0.0.0.0:8000 -m 007 wsgi --daemon
+
+# the above will run the flask application on port 8000. 
+# If you want to make the service publically available, you'll need to put a proxy in front of it, such as nginx, and manage firewall settings
+# best to talk to your local systems people on how to do this
+# again, many examples of configurations online
+
+Adding a new service
+====================
+Services are managed in the SERVICE table. This contains the following fields:
+ name: the name of the service, as referred to by clients, eg "CIRRUS"
+ scheduler_url: the endpoint for the remote scheduler plus the saga scheduler type, eg "pbspro+ssh://login.cirrus.ac.uk"
+ username: the account name on the remote scheduler under which jobs will be executed
+ user_pass: either the user's password, or the unlock phrase for the user's keystore
+ user_key: the user's public key to use for accessing the service (or NULL if user/password is to be used)
+ file_url: the endpoint for the secure file transfer node, eg "sftp://dsn.cirrus.ac.uk"
+ working_directory: the path on the service which will be used as the base directory for jobs, eg "/home/millingw/jobs"
+
+Please follow the appropriate instructions for the remote host to generate ssh keys and set user_key above. User/password alone is not recommended.
+For example:
+https://userinfo.surfsara.nl/systems/lisa/user-guide/connecting-and-transferring-data#sshkey
+https://cirrus.readthedocs.io/en/latest/user-guide/connecting.html#ssh-clients
+
+Adding job templates
+====================
+
+For easy integration with the PolNet workflow suite, simulations can be submitted by simply specifying the name of an existing template.
+A template contains the detailed specification for a simulation, and is linked to a specific service.
+Templates can be added directly by inserting into the JOB_TEMPLATE table, or using the GUI within the web application.
+
+A template can contain the following fields:
+name: the name of the template (mandatory, must be unique)
+executable: the script or application to be executed (mandatory)
+num_total_cpus: the total number of required cores. The saga-python library will automatically calculate and reserve the appropriate number of nodes.
+total_physical_memory: Total memory required. This is host-specific, and passed as an unchecked string. Please see the documentation for the specific host.
+wallclock_limit: the required wallclock time in minutes
+project: the budget under which the job will run
+queue: a specific queue to which the job should be submitted
+arguments: input arguments to the executable. note that these will be ignored if the user specifies any input arguments
+filter: by default all files in the job's working directory will be retrieved from the remote host. This can be overridden by specifying a filter.
+A filter must be a valid python regular expression https://docs.python.org/2/library/re.html
+Only those files whose name/path match a filter will be retrieved. 
+For example, to only retrieve files in a "results" subdirectory, a filter could be specified containing "results/.*"
+
+
+Executables
+===========
+
+When submitting a job on an HPC cluster, one normally runs a script which loads necessary software and paths into the environment.
+For example:
+
+submit.sh:
+
+module use /lustre/home/shared/d411/hemelb/modulefiles
+module load hemelb
+mpirun -np $1 hemelb -in $2
+
+When setting up a template, here the executable would be the name/path of the script, and the number of cores for the mpirun command and the name of the input file specified as commandline arguments.
+
+
+
+
+
+
+
+

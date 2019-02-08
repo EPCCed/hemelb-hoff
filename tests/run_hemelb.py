@@ -25,6 +25,53 @@ import warnings
 import json
 
 
+class Machine:
+    SITES_PER_CORE = float(100000)
+    @classmethod
+    def choose_cores(cls, n_sites):
+        ideal_cores = float(n_sites) / cls.SITES_PER_CORE
+        ideal_nodes = ideal_cores / cls.CORES_PER_NODE
+        i = bisect.bisect_left(cls.KNOWN_NODES, ideal_nodes)
+        i = min(i, len(cls.KNOWN_NODES) - 1)
+        n_nodes = cls.KNOWN_NODES[i]
+        n_cores = n_nodes * cls.CORES_PER_NODE
+        
+    @classmethod
+    def choose_template(cls, n_sites):
+        n_cores = cls.choose_cores(n_sites)
+        return cls.TEMPLATE.format(n_cores)
+
+class Cirrus(Machine):
+    CORES_PER_NODE = 36
+    KNOWN_NODES = [1, 2, 4, 8, 16]
+    TEMPLATE = 'cirrus_mouse_{}'
+
+
+def count_sites(gmy_filename):
+    with open(gmy_filename, 'rb') as gmy:
+        preamble = gmy.read(32)
+        reader = xdrlib.Unpacker(preamble)
+        assert(reader.unpack_uint() == 0x686c6221)
+        assert(reader.unpack_uint() == 0x676d7904)
+        assert(reader.unpack_uint() == 4)
+
+        block_counts = [read.unpack_uint() for i in xrange(3)]
+        block_size = read.unpack_uint()
+        total_blocks = block_counts[0]*block_counts[1]*block_counts[2]
+        header_bytes =  total_blocks * 3 * 4
+        header = gmy.read(header_bytes)
+        pass
+
+    reader = xdrlib.Unpacker(header)
+
+    total_fluid = 0
+    for i in range(total_blocks):
+        total_fluid += reader.unpack_uint()
+        ignored = reader.unpack_uint()
+        ignored = reader.unpack_uint()
+
+    return total_fluid
+
 def get_gmy_filename_from_xml(xml_filename):
     from xml.etree import ElementTree
     tree = ElementTree.parse(xml_filename)
@@ -46,7 +93,7 @@ def download_file(JOBS_URL, job_id, filename, output_dir, session):
                 f.write(chunk)
 
 
-def submit_and_fetch_simulation(conf, xml_file, gmy_file, template_name, output_dir):
+def submit_and_fetch_simulation(conf, xml_file, gmy_file, output_dir):
     with requests.Session() as s:
 
 
@@ -65,9 +112,12 @@ def submit_and_fetch_simulation(conf, xml_file, gmy_file, template_name, output_
         assert p.status_code == 200
 
         # create a new job using the template name
+        n_sites = count_sites(gmy_file)
+        template_name = Cirrus.choose_template(n_sites)
+        args = '{} {}'.format(Cirrus.choose_cores(n_sites), xml_file)
         payload = {}
         payload['template_name'] = template_name
-        payload['arguments'] = xml_file
+        payload['arguments'] = args
 
         # Post the job spec, job is created with NEW state
         p = s.post(JOBS_URL, json=payload)
@@ -134,12 +184,12 @@ if __name__ == '__main__':
         warnings.simplefilter("ignore")
         parser = argparse.ArgumentParser(description='Submit a HemeLB simulation')
         parser.add_argument('xml_file', help='HemeLB XML input file')
-        parser.add_argument('template_name', help='template name')
+        #parser.add_argument('template_name', help='template name')
         parser.add_argument('conf_file', help='Configuration file')
         args = parser.parse_args()
         xml_file = args.xml_file
         conf_file = args.conf_file
-        template_name = args.template_name
+        #template_name = None if args.template_name.lower() == 'none' else args.template_name
         output_dir = os.getcwd()
         gmy_file = get_gmy_filename_from_xml(xml_file)
 
@@ -147,9 +197,5 @@ if __name__ == '__main__':
         with open(conf_file, 'r') as f:
             conf = json.load(f)
 
-        submit_and_fetch_simulation(conf, xml_file, gmy_file, template_name, output_dir)
-
-
-
-
+        submit_and_fetch_simulation(conf, xml_file, gmy_file, output_dir)
 

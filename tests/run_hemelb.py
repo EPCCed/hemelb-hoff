@@ -23,6 +23,8 @@ import argparse
 import time
 import warnings
 import json
+import xdrlib
+import bisect
 
 
 class Machine:
@@ -31,10 +33,14 @@ class Machine:
     def choose_cores(cls, n_sites):
         ideal_cores = float(n_sites) / cls.SITES_PER_CORE
         ideal_nodes = ideal_cores / cls.CORES_PER_NODE
+        # Debugging runs in very small problems
+        if ideal_nodes < 0.5:
+            return 2
         i = bisect.bisect_left(cls.KNOWN_NODES, ideal_nodes)
         i = min(i, len(cls.KNOWN_NODES) - 1)
         n_nodes = cls.KNOWN_NODES[i]
         n_cores = n_nodes * cls.CORES_PER_NODE
+        return n_cores
         
     @classmethod
     def choose_template(cls, n_sites):
@@ -55,8 +61,8 @@ def count_sites(gmy_filename):
         assert(reader.unpack_uint() == 0x676d7904)
         assert(reader.unpack_uint() == 4)
 
-        block_counts = [read.unpack_uint() for i in xrange(3)]
-        block_size = read.unpack_uint()
+        block_counts = [reader.unpack_uint() for i in xrange(3)]
+        block_size = reader.unpack_uint()
         total_blocks = block_counts[0]*block_counts[1]*block_counts[2]
         header_bytes =  total_blocks * 3 * 4
         header = gmy.read(header_bytes)
@@ -114,10 +120,9 @@ def submit_and_fetch_simulation(conf, xml_file, gmy_file, output_dir):
         # create a new job using the template name
         n_sites = count_sites(gmy_file)
         template_name = Cirrus.choose_template(n_sites)
-        args = '{} {}'.format(Cirrus.choose_cores(n_sites), xml_file)
         payload = {}
         payload['template_name'] = template_name
-        payload['arguments'] = args
+        payload['arguments'] = xml_file
 
         # Post the job spec, job is created with NEW state
         p = s.post(JOBS_URL, json=payload)

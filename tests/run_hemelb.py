@@ -18,7 +18,6 @@
 
 import os.path
 import requests
-import os
 import argparse
 import time
 import warnings
@@ -82,8 +81,8 @@ def get_gmy_filename_from_xml(xml_filename):
     from xml.etree import ElementTree
     tree = ElementTree.parse(xml_filename)
     gmy_filename = tree.getroot().find('geometry/datafile').attrib['path']
-    return gmy_filename
-
+    xml_dir = os.path.dirname(os.path.abspath(xml_filename))
+    return os.path.normpath(os.path.join(xml_dir, gmy_filename))
 
 def download_file(JOBS_URL, job_id, filename, output_dir, session):
     file_url = JOBS_URL + "/" + job_id + "/files/" + filename

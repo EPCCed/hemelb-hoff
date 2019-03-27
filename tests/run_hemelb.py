@@ -25,6 +25,7 @@ import warnings
 import json
 import xdrlib
 import bisect
+import sys
 
 
 class Machine:
@@ -100,6 +101,7 @@ def download_file(JOBS_URL, job_id, filename, output_dir, session):
 
 
 def submit_and_fetch_simulation(conf, xml_file, gmy_file, output_dir):
+    '''Return True on successful execution and fetch results, and False or exception on failure'''
     with requests.Session() as s:
 
 
@@ -154,8 +156,6 @@ def submit_and_fetch_simulation(conf, xml_file, gmy_file, output_dir):
             assert p.status_code == 200
             state = p.content
 
-        assert state == 'Done'
-
         # job has completed or failed. check to see if the job has been retrieved
         get_retrieved_state_url = JOBS_URL + "/" + str(job_id) + "/retrieved"
         p = s.get(get_retrieved_state_url)
@@ -183,6 +183,8 @@ def submit_and_fetch_simulation(conf, xml_file, gmy_file, output_dir):
         p = s.delete(delete_url)
         assert p.status_code == 200
 
+        return (state == 'Done')
+
 
 if __name__ == '__main__':
     with warnings.catch_warnings() as w:
@@ -202,5 +204,7 @@ if __name__ == '__main__':
         with open(conf_file, 'r') as f:
             conf = json.load(f)
 
-        submit_and_fetch_simulation(conf, xml_file, gmy_file, output_dir)
+        ok = submit_and_fetch_simulation(conf, xml_file, gmy_file, output_dir)
+
+        sys.exit(0 if ok else 1)
 

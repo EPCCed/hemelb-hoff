@@ -24,7 +24,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Delete a Hoff job')
     parser.add_argument('conf_file', help='Configuration file')
-    parser.add_argument('hoff_job_ids', help='HemeLB XML input file', nargs='+')
+    parser.add_argument('hoff_job_ids', help='List of Hoff job ids (one or more)', nargs='+')
     args = parser.parse_args()
     conf_file = args.conf_file
     conf = None

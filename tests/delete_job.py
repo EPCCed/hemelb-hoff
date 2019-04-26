@@ -15,41 +15,19 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-
-import requests
+from hoffclient import Config, Session
 import argparse
-import json
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Delete a Hoff job')
-    parser.add_argument('conf_file', help='Configuration file')
+    parser.add_argument('--config', '-c', default=None, help='Configuration file')
     parser.add_argument('hoff_job_ids', help='List of Hoff job ids (one or more)', nargs='+')
     args = parser.parse_args()
-    conf_file = args.conf_file
-    conf = None
-    with open(conf_file, 'r') as f:
-        conf = json.load(f)
+    conf = Config(args.config)
 
-    with requests.Session() as s:
-
-        login_credentials = {
-            'email': conf['username'],
-            'password': conf['password']
-        }
-
-        BASE_URL = conf['server_url']
-        LOGIN_URL = BASE_URL + "/admin/login/"
-        JOBS_URL = BASE_URL + "/jobs"
-
-        # log into the Hoff
-        p = s.post(LOGIN_URL, data=login_credentials)
-        # check we logged in ok
-        assert p.status_code == 200
-
+    with Session(conf) as s:
+        jclient = s.jobs
         for job_id in args.hoff_job_ids:
-        # delete the job
-            delete_url = JOBS_URL + "/" + str(job_id)
-            p = s.delete(delete_url)
-            # check that job was deleted
-            assert p.status_code == 200
+            # delete the job
+            jclient.delete(job_id)

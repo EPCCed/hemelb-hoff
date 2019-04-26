@@ -17,15 +17,16 @@
 """
 
 import os.path
-import requests
 import argparse
 import time
 import warnings
-import json
 import xdrlib
 import bisect
 import sys
 
+import hoffclient
+from hoffclient import Config, Session
+from hoffclient.jobs import JobCreateParams
 
 class Machine:
     SITES_PER_CORE = float(100000)
@@ -84,20 +85,6 @@ def get_gmy_filename_from_xml(xml_path):
     tree = ElementTree.parse(xml_path)
     return tree.getroot().find('geometry/datafile').attrib['path']
 
-def download_file(JOBS_URL, job_id, filename, output_dir, session):
-    file_url = JOBS_URL + "/" + job_id + "/files/" + filename
-    local_filename = os.path.join(output_dir, filename)
-
-    if not os.path.exists(os.path.dirname(local_filename)):
-        os.makedirs(os.path.dirname(local_filename))
-
-    r = session.get(file_url, stream=True)
-    with open(local_filename, 'wb') as f:
-        for chunk in r.iter_content(chunk_size=1024):
-            if chunk:  # filter out keep-alive new chunks
-                f.write(chunk)
-
-
 def submit_and_fetch_simulation(conf, xml):
     '''Return True on successful execution and fetch results, and False or exception on failure'''
     xml_path_abs = os.path.abspath(xml)
@@ -110,89 +97,64 @@ def submit_and_fetch_simulation(conf, xml):
     output_dir = input_dir
 
     assert gmy_file_name == os.path.basename(gmy_path_abs), "Path issues"
+    n_sites = count_sites(gmy_path_abs)
+    template_name = Cirrus.choose_template(n_sites)
 
-    with requests.Session() as s:
+    POLL_INTERVAL_SECONDS = 15
+    def poll(getter, done):
+        """Run the nullary function `getter` at least once and then at
+        an interval until the unary function `done` returns a true value
+        on the result of calling getter. Returns the first value that
+        `done` accepts.
+        """
+        result = getter()
+        while not done(result):
+            time.sleep(POLL_INTERVAL_SECONDS)
+            result = getter()
+        return result
 
-        login_credentials = {
-            'email': conf['username'],
-            'password': conf['password']
-        }
-
-        BASE_URL = conf['server_url']
-        LOGIN_URL = BASE_URL + "/admin/login/"
-        JOBS_URL = BASE_URL + "/jobs"
-
-        # log into the Hoff
-        p = s.post(LOGIN_URL, data=login_credentials)
-        # check we logged in ok
-        assert p.status_code == 200
-
+    with Session(conf) as s:
+        jobclient = s.jobs
         # create a new job using the template name
-        n_sites = count_sites(gmy_path_abs)
-        template_name = Cirrus.choose_template(n_sites)
-        payload = {}
-        payload['template_name'] = template_name
-        payload['arguments'] = xml_file_name
-
-        # Post the job spec, job is created with NEW state
-        p = s.post(JOBS_URL, json=payload)
-        assert p.status_code == 200
-
-        # get the job id from the response
-        job_id = p.content
+        jcp = JobCreateParams(
+            template_name=template_name,
+            arguments=xml_file_name)
+        # get the job id
+        job_id = jobclient.create(jcp)
 
         # upload the input files
-        file_url = JOBS_URL + "/" + str(job_id) + "/files"
-        input_files = {xml_file_name: open(xml_path_abs, 'rb'), gmy_file_name: open(gmy_path_abs, 'rb')}
-        p = s.post(file_url, files=input_files)
-        assert p.status_code == 200
+        jobclient.add_input(
+            job_id,
+            **{
+                xml_file_name: xml_path_abs,
+                gmy_file_name: gmy_path_abs
+                })
 
         # submit the job
-        post_url = JOBS_URL + "/" + str(job_id) + "/submit"
-        p = s.post(post_url)
-        assert p.status_code == 200
+        jobclient.submit(job_id)
 
         # wait for completion
-        get_url = JOBS_URL + "/" + str(job_id) + "/state"
-        p = s.get(get_url)
-        assert p.status_code == 200
-        state = p.content
-
-        while state not in ['Done', 'Failed']:
-            time.sleep(30)
-            p = s.get(get_url)
-            assert p.status_code == 200
-            state = p.content
+        state = poll(
+            lambda : jobclient.get_state(job_id),
+            lambda state : state in  ['Done', 'Failed']
+            )
 
         # job has completed or failed. check to see if the job has been retrieved
-        get_retrieved_state_url = JOBS_URL + "/" + str(job_id) + "/retrieved"
-        p = s.get(get_retrieved_state_url)
-        assert p.status_code == 200
-        retrieved = int(p.content)
-
-        while retrieved != 1:
-            time.sleep(30)
-            p = s.get(get_retrieved_state_url)
-            assert p.status_code == 200
-            retrieved = int(p.content)
+        poll(
+            lambda : jobclient.get_retrieved(job_id),
+            lambda ret : ret == 1
+            )
 
         # get the list of output files
-        file_list_url = JOBS_URL + "/" + str(job_id) + "/files"
-        p = s.get(file_list_url)
-        assert p.status_code == 200
-        file_list = p.json()
+        file_list = jobclient.list_output(job_id)
 
         # download the files
-        for f in file_list:
-            download_file(JOBS_URL, job_id, f, output_dir, s)
+        jobclient.fetch_output(job_id, file_list)
 
         # delete the job
-        delete_url = JOBS_URL + "/" + str(job_id)
-        p = s.delete(delete_url)
-        assert p.status_code == 200
+        jobclient.delete(job_id)
 
         return (state == 'Done')
-
 
 if __name__ == '__main__':
     with warnings.catch_warnings() as w:
@@ -204,10 +166,7 @@ if __name__ == '__main__':
 
         args = parser.parse_args()
         xml_file = args.xml_file
-        conf_file = args.conf_file
-
-        with open(conf_file, 'r') as f:
-            conf = json.load(f)
+        conf = Config(args.conf_file)
 
         ok = submit_and_fetch_simulation(conf, xml_file)
 

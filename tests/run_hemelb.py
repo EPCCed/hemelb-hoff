@@ -98,13 +98,16 @@ def download_file(JOBS_URL, job_id, filename, output_dir, session):
                 f.write(chunk)
 
 
-def submit_and_fetch_simulation(conf, xml, output_dir):
+def submit_and_fetch_simulation(conf, xml):
     '''Return True on successful execution and fetch results, and False or exception on failure'''
     xml_path_abs = os.path.abspath(xml)
     input_dir = os.path.dirname(xml_path_abs)
     gmy_file_name = os.path.normpath(get_gmy_filename_from_xml(xml_path_abs))
     xml_file_name = os.path.basename(xml_path_abs)
     gmy_path_abs = os.path.normpath(os.path.join(input_dir, gmy_file_name))
+
+    # Copy output files back to the folder where the HemeLB xml config file was
+    output_dir = input_dir
 
     assert gmy_file_name == os.path.basename(gmy_path_abs), "Path issues"
 
@@ -202,11 +205,10 @@ if __name__ == '__main__':
         args = parser.parse_args()
         xml_file = args.xml_file
         conf_file = args.conf_file
-        output_dir = os.getcwd()
 
         with open(conf_file, 'r') as f:
             conf = json.load(f)
 
-        ok = submit_and_fetch_simulation(conf, xml_file, output_dir)
+        ok = submit_and_fetch_simulation(conf, xml_file)
 
         sys.exit(0 if ok else 1)

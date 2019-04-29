@@ -30,7 +30,7 @@ class Printer(object):
 
     def __call__(self):
         self.print_header()
-        for i in xrange(self.nrows):
+        for i in range(self.nrows):
             self.printer(self.make_line(lambda c: c.fmt_str.format(c.data[i], width=c.width)))
         self.print_footer()
     pass
@@ -77,7 +77,7 @@ def print_table(col_names, data_by_name):
     print(hline)
     print(header)
     print(hline)    
-    for i in xrange(nrows):
+    for i in range(nrows):
         print(make_line(lambda c: c.fmt_str.format(c.data[i])))
     print(hline)
 

@@ -98,7 +98,7 @@ class JobClient(SubClient):
         if resp.status_code != 200:
             raise HoffError('Could not get state for job ID "{}"'.format(job_id),
                                 response=resp)
-        return resp.content
+        return resp.text
 
     def get_retrieved(self, job_id):
         """Given a job ID get whether it's results have been fetched to

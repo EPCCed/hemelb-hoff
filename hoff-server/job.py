@@ -1,5 +1,4 @@
 class BaseJob:
-
     def set_local_id(id):
         pass
 
@@ -29,4 +28,3 @@ class BaseJob:
 
     def submit_job(self, job_description, endpoint):
         pass
-

@@ -13,10 +13,9 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-
+from __future__ import print_function
 import hashlib
 import os
-
 
 
 def queryresult_to_array(keys, queryresult):
@@ -35,6 +34,7 @@ def queryresult_to_array(keys, queryresult):
         d.append(row)
     return d
 
+
 def queryresult_to_dict(keys, queryresult):
 
     d = {}
@@ -52,7 +52,6 @@ def queryresult_to_dict(keys, queryresult):
     return d
 
 
-
 def compute_hash_for_dir_contents(dir):
 
     hash_sha = hashlib.sha1()
@@ -64,19 +63,18 @@ def compute_hash_for_dir_contents(dir):
     for f in dirFiles:
         # use os.walk to iterate someDir's contents recursively. No
         # need to implement recursion yourself if stdlib does it for you
-            abspath = os.path.join(dir, f)
-            with open(abspath) as f:
+        abspath = os.path.join(dir, f)
+        with open(abspath) as f:
+            buf = f.read(read_blocksize)
+            while len(buf) > 0:
+                hash_sha.update(buf)
                 buf = f.read(read_blocksize)
-                while len(buf) > 0:
-                    hash_sha.update(buf)
-                    buf = f.read(read_blocksize)
 
     return hash_sha.hexdigest()
 
 
 def main():
-    print compute_hash_for_dir_contents("/home/ubuntu/inputsets/11")
-
+    print(compute_hash_for_dir_contents("/home/ubuntu/inputsets/11"))
 
 
 if __name__ == "__main__":

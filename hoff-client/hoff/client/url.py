@@ -4,14 +4,16 @@ class UrlBuildMixin(object):
 
     Make sure you set `url` attribute on subclasses before calling this.
     """
+
     def urlbuild(self, *parts):
         base = self.url
         for p in parts:
-            if p.startswith('/'):
+            if p.startswith("/"):
                 p = p[1:]
-            if base.endswith('/'):
+            if base.endswith("/"):
                 base += p
             else:
-                base += '/' + p
+                base += "/" + p
         return base
+
     pass

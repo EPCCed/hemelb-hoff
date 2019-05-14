@@ -32,6 +32,3 @@ def run_remote_command(server, username, passphrase, command):
     client.close()
 
     return stdout, stderr
-
-
-

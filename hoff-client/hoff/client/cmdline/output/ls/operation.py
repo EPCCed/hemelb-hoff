@@ -1,6 +1,7 @@
 from __future__ import print_function, absolute_import
 from hoff.client import Config, Session
 
+
 def run(args):
     conf = Config(args.config)
 
@@ -13,4 +14,3 @@ def run(args):
 
     for item in output:
         print(output)
-        

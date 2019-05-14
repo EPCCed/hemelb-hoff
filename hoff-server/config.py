@@ -1,17 +1,17 @@
 # Create dummy secrey key so we can use sessions
-SECRET_KEY = '*********'
+SECRET_KEY = "*********"
 
 # Name of the MariaDB database we will use
-DATABASE_FILE = 'compbiomed'
+DATABASE_FILE = "compbiomed"
 
 # the complete path to our running database
 # note that the account used here should not have any schema modification permissions,
 # ie no table drops or creation
-SQLALCHEMY_DATABASE_URI = 'mysql://web:web@localhost/' + DATABASE_FILE
+SQLALCHEMY_DATABASE_URI = "mysql://web:web@localhost/" + DATABASE_FILE
 
 
 # Application logging file name
-APP_LOGFILE = '/home/ubuntu/foo.log'
+APP_LOGFILE = "/home/ubuntu/foo.log"
 
 SQLALCHEMY_ECHO = False
 
@@ -41,13 +41,13 @@ SECURITY_CHANGEABLE = True
 WTF_CSRF_ENABLED = False
 
 # Location for holding input file before staging
-INPUT_STAGING_AREA = '/home/ubuntu/jobs/input'
+INPUT_STAGING_AREA = "/home/ubuntu/jobs/input"
 
 # Location for holding output files
-OUTPUT_STAGING_AREA = '/home/ubuntu/jobs/output'
+OUTPUT_STAGING_AREA = "/home/ubuntu/jobs/output"
 
 # local for holding input filesets
-INPUTSET_STAGING_AREA = '/home/ubuntu/inputsets'
+INPUTSET_STAGING_AREA = "/home/ubuntu/inputsets"
 
 
 # Location for temnporary files

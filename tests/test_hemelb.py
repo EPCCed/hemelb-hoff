@@ -14,7 +14,7 @@
    limitations under the License.
 """
 
-
+from __future__ import print_function
 import requests
 import time
 from config import MAX_USER_JOBS
@@ -27,37 +27,38 @@ from tests.test_params import login_credentials
 
 
 payload = {}
-payload['name'] = "polnet_test"
-payload['service'] = "CIRRUS"
-payload['executable'] = "/lustre/home/d411/malcolmi/test_submit/submit.sh"
-payload['num_total_cpus'] = 36
-payload['wallclock_limit'] = 5
-payload['project'] = "d411-polnet"
-payload['arguments'] = "test.xml"
-payload['filter'] = "results\/.*"
-payload['extended'] = "#PBS -l place=scatter:excl"
+payload["name"] = "polnet_test"
+payload["service"] = "CIRRUS"
+payload["executable"] = "/lustre/home/d411/malcolmi/test_submit/submit.sh"
+payload["num_total_cpus"] = 36
+payload["wallclock_limit"] = 5
+payload["project"] = "d411-polnet"
+payload["arguments"] = "test.xml"
+payload["filter"] = "results\/.*"
+payload["extended"] = "#PBS -l place=scatter:excl"
 
-small_files = { 'config.gmy': open('/home/ubuntu/config.gmy','rb'),
-          'test.xml': open('/home/ubuntu/config.xml','rb')
-        }
+small_files = {
+    "config.gmy": open("/home/ubuntu/config.gmy", "rb"),
+    "test.xml": open("/home/ubuntu/config.xml", "rb"),
+}
 
 big_files = {
-    'big_file_1.dat': open('/home/ubuntu/big_file_1.dat','rb'),
-    'big_file_2.dat': open('/home/ubuntu/big_file_2.dat','rb'),
-    'big_file_3.dat': open('/home/ubuntu/big_file_3.dat','rb')
+    "big_file_1.dat": open("/home/ubuntu/big_file_1.dat", "rb"),
+    "big_file_2.dat": open("/home/ubuntu/big_file_2.dat", "rb"),
+    "big_file_3.dat": open("/home/ubuntu/big_file_3.dat", "rb"),
 }
 
 
 lisa_payload = {}
-lisa_payload['name'] = "polnet_test"
-lisa_payload['service'] = "LISA"
-lisa_payload['executable'] = "/home/millingw/submit.sh"
-lisa_payload['num_total_cpus'] = 4
-lisa_payload['wallclock_limit'] = 5
-#payload['project'] = "d411-polnet"
-lisa_payload['arguments'] = "test.xml"
-lisa_payload['filter'] = "results\/.*"
-#payload['extended'] = "#PBS -l place=scatter:excl"
+lisa_payload["name"] = "polnet_test"
+lisa_payload["service"] = "LISA"
+lisa_payload["executable"] = "/home/millingw/submit.sh"
+lisa_payload["num_total_cpus"] = 4
+lisa_payload["wallclock_limit"] = 5
+# payload['project'] = "d411-polnet"
+lisa_payload["arguments"] = "test.xml"
+lisa_payload["filter"] = "results\/.*"
+# payload['extended'] = "#PBS -l place=scatter:excl"
 
 
 def testJob():
@@ -70,42 +71,41 @@ def testJob():
 
         # An authorised request.
         p = s.post(JOBS_URL, json=payload)
-        print p.content
+        print(p.content)
         assert p.status_code == 200
         job_id = p.content
-        print job_id
+        print(job_id)
 
-        #upload the small input files
+        # upload the small input files
         file_url = JOBS_URL + "/" + str(job_id) + "/files"
         p = s.post(file_url, files=small_files)
         assert p.status_code == 200
 
         # upload the big input files, just to make sure things don't fall over under stress
-        #file_url = JOBS_URL + "/" + str(job_id) + "/files"
-        #p = s.post(file_url, files=big_files, verify=PEM_CERTIFICATE)
-        #assert p.status_code == 200
+        # file_url = JOBS_URL + "/" + str(job_id) + "/files"
+        # p = s.post(file_url, files=big_files, verify=PEM_CERTIFICATE)
+        # assert p.status_code == 200
 
-
-        #submit the job
+        # submit the job
         post_url = JOBS_URL + "/" + str(job_id) + "/submit"
         p = s.post(post_url)
         assert p.status_code == 200
-        print p.text
+        print(p.text)
 
-        #wait for completion
+        # wait for completion
         get_url = JOBS_URL + "/" + str(job_id) + "/state"
         p = s.get(get_url)
         assert p.status_code == 200
         state = p.content
 
-        while state not in ['Done', 'Failed']:
+        while state not in ["Done", "Failed"]:
             time.sleep(60)
             p = s.get(get_url)
             assert p.status_code == 200
             state = p.content
-            print state
+            print(state)
 
-        assert state == 'Done'
+        assert state == "Done"
 
         file_list_url = JOBS_URL + "/" + str(job_id) + "/files"
         p = s.get(file_list_url)
@@ -113,29 +113,25 @@ def testJob():
         file_list = p.json()
 
         for f in file_list:
-            print f
+            print(f)
 
-
-        print "deleting job"
+        print("deleting job")
         delete_url = JOBS_URL + "/" + str(job_id)
         p = s.delete(delete_url)
         assert p.status_code == 200
-        print p.status_code
+        print(p.status_code)
 
-        print "checking deleted state"
+        print("checking deleted state")
         get_url = JOBS_URL + "/" + str(job_id) + "/state"
         p = s.get(get_url)
         state = p.content
-        print "final state is " + state
-        assert state == 'DELETED'
-
+        print("final state is " + state)
+        assert state == "DELETED"
 
 
 def testLisaJob():
 
     with requests.Session() as s:
-
-
 
         p = s.post(LOGIN_URL, data=login_credentials)
         # print the html returned or something more intelligent to see if it's a successful login page.
@@ -143,42 +139,41 @@ def testLisaJob():
 
         # An authorised request.
         p = s.post(JOBS_URL, json=lisa_payload)
-        print p.content
-        assert p.status_code == 200
+        print(p.content)
+        assertp.status_code == 200
         job_id = p.content
-        print job_id
+        print(job_id)
 
-        #upload the small input files
+        # upload the small input files
         file_url = JOBS_URL + "/" + str(job_id) + "/files"
         p = s.post(file_url, files=small_files)
         assert p.status_code == 200
 
         # upload the big input files, just to make sure things don't fall over under stress
-#        file_url = JOBS_URL + "/" + str(job_id) + "/files"
-#        p = s.post(file_url, files=big_files, verify=PEM_CERTIFICATE)
-#        assert p.status_code == 200
+        #        file_url = JOBS_URL + "/" + str(job_id) + "/files"
+        #        p = s.post(file_url, files=big_files, verify=PEM_CERTIFICATE)
+        #        assert p.status_code == 200
 
-
-        #submit the job
+        # submit the job
         post_url = JOBS_URL + "/" + str(job_id) + "/submit"
         p = s.post(post_url)
         assert p.status_code == 200
-        print p.text
+        print(p.text)
 
-        #wait for completion
+        # wait for completion
         get_url = JOBS_URL + "/" + str(job_id) + "/state"
         p = s.get(get_url)
         assert p.status_code == 200
         state = p.content
 
-        while state not in ['Done', 'Failed']:
+        while state not in ["Done", "Failed"]:
             time.sleep(60)
             p = s.get(get_url)
             assert p.status_code == 200
             state = p.content
-            print state
+            print(state)
 
-        assert state == 'Done'
+        assert state == "Done"
 
         file_list_url = JOBS_URL + "/" + str(job_id) + "/files"
         p = s.get(file_list_url)
@@ -186,21 +181,20 @@ def testLisaJob():
         file_list = p.json()
 
         for f in file_list:
-            print f
+            print(f)
 
-
-        print "deleting job"
+        print("deleting job")
         delete_url = JOBS_URL + "/" + str(job_id)
         p = s.delete(delete_url)
         assert p.status_code == 200
-        print p.status_code
+        print(p.status_code)
 
-        print "checking deleted state"
+        print("checking deleted state")
         get_url = JOBS_URL + "/" + str(job_id) + "/state"
         p = s.get(get_url)
         state = p.content
-        print "final state is " + state
-        assert state == 'DELETED'
+        print("final state is " + state)
+        assert state == "DELETED"
 
 
 # submit a job by specifying a template name rather than providing a job description
@@ -213,43 +207,45 @@ def testTemplate():
         assert p.status_code == 200
 
         # try a non-existent template and make sure it behaves itself
-        template_payload = {'template_name': "fdsfsdfsdsdfsdfsdfsdfsdfsdfs"}
+        template_payload = {"template_name": "fdsfsdfsdsdfsdfsdfsdfsdfsdfs"}
         p = s.post(JOBS_URL, json=template_payload)
         assert p.status_code == 404
 
         # now try a real one
-        template_payload = {'template_name': TEST_TEMPLATE_NAME, 'arguments': "test.xml" }
+        template_payload = {
+            "template_name": TEST_TEMPLATE_NAME,
+            "arguments": "test.xml",
+        }
         p = s.post(JOBS_URL, json=template_payload)
         assert p.status_code == 200
         job_id = p.content
-        print job_id
+        print(job_id)
 
-        #upload the small input files
+        # upload the small input files
         file_url = JOBS_URL + "/" + str(job_id) + "/files"
         p = s.post(file_url, files=small_files)
         assert p.status_code == 200
 
-
-        #submit the job
+        # submit the job
         post_url = JOBS_URL + "/" + str(job_id) + "/submit"
         p = s.post(post_url)
         assert p.status_code == 200
-        print p.text
+        print(p.text)
 
-        #wait for completion
+        # wait for completion
         get_url = JOBS_URL + "/" + str(job_id) + "/state"
         p = s.get(get_url)
         assert p.status_code == 200
         state = p.content
 
-        while state not in ['Done', 'Failed']:
+        while state not in ["Done", "Failed"]:
             time.sleep(60)
             p = s.get(get_url)
             assert p.status_code == 200
             state = p.content
-            print state
+            print(state)
 
-        assert state == 'Done'
+        assert state == "Done"
 
         file_list_url = JOBS_URL + "/" + str(job_id) + "/files"
         p = s.get(file_list_url)
@@ -257,20 +253,20 @@ def testTemplate():
         file_list = p.json()
 
         for f in file_list:
-            print f
+            print(f)
 
-        print "deleting job"
+        print("deleting job")
         delete_url = JOBS_URL + "/" + str(job_id)
         p = s.delete(delete_url)
         assert p.status_code == 200
-        print p.status_code
+        print(p.status_code)
 
-        print "checking deleted state"
+        print("checking deleted state")
         get_url = JOBS_URL + "/" + str(job_id) + "/state"
         p = s.get(get_url)
         state = p.content
-        print "final state is " + state
-        assert state == 'DELETED'
+        print("final state is " + state)
+        assert state == "DELETED"
 
 
 # note: this test relies on the user having no active jobs in the test database
@@ -281,7 +277,7 @@ def testJobLimit():
 
         p = s.post(LOGIN_URL, data=login_credentials)
         # print the html returned or something more intelligent to see if it's a successful login page.
-        print p.status_code
+        print(p.status_code)
 
         for i in range(0, MAX_USER_JOBS):
             p = s.post(JOBS_URL, json=payload)
@@ -295,8 +291,8 @@ def testJobLimit():
         p = s.get(JOBS_URL)
         job_list = p.json()
         for j in job_list:
-            job_id = j['local_job_id']
-            s.delete(JOBS_URL + "/" +job_id)
+            job_id = j["local_job_id"]
+            s.delete(JOBS_URL + "/" + job_id)
 
         # repeat the test, should be same as before as deleted jobs are not counted
         for i in range(0, MAX_USER_JOBS):
@@ -306,7 +302,6 @@ def testJobLimit():
         # going one over the job limit should fail
         p = s.post(JOBS_URL, json=payload)
         assert p.status_code == 500
-
 
 
 def testInputSet():
@@ -319,7 +314,7 @@ def testInputSet():
         name = uuid.uuid4()
 
         # An authorised request.
-        p = s.post(INPUTSETS_URL, data={'name': str(name)})
+        p = s.post(INPUTSETS_URL, data={"name": str(name)})
         assert p.status_code == 200
 
         id = p.content
@@ -360,15 +355,12 @@ def testInputSet():
         assert p.status_code == 404
 
 
-
-
 def main():
     testLisaJob()
     testJob()
-    #testInputSet()
-    #testJobLimit()
+    # testInputSet()
+    # testJobLimit()
     testTemplate()
-
 
 
 if __name__ == "__main__":

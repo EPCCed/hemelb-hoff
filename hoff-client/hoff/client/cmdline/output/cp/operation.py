@@ -1,5 +1,6 @@
 from hoff.client import Config, Session
 
+
 def run(args):
     conf = Config(args.config)
 

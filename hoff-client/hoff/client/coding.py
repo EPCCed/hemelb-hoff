@@ -1,4 +1,3 @@
-
 class JsonCodable(object):
     """Mixin to make things easy to move between JSON and objects,
     optionally renaming them.
@@ -8,7 +7,7 @@ class JsonCodable(object):
     client/object side name of attributes and values being the
     server/json-dict side name.
     """
-    
+
     def __init__(self, **kwargs):
         for client_attr in self.JSON_ATTRS:
             server_attr = self.JSON_RENAME_C2S.get(client_attr, client_attr)
@@ -22,4 +21,5 @@ class JsonCodable(object):
             server_attr = self.JSON_RENAME_C2S.get(client_attr, client_attr)
             ans[server_attr] = getattr(self, client_attr)
         return ans
+
     pass

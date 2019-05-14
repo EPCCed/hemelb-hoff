@@ -24,9 +24,8 @@ import xdrlib
 import bisect
 import sys
 
-import hoffclient
-from hoffclient import Config, Session
-from hoffclient.jobs import JobCreateParams
+from hoff.client import Config, Session
+from hoff.client.jobs import JobCreateParams
 
 class Machine:
     SITES_PER_CORE = float(100000)

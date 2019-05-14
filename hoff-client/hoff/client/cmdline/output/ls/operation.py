@@ -1,5 +1,5 @@
-from __future__ import print_function
-from hoffclient import Config, Session
+from __future__ import print_function, absolute_import
+from hoff.client import Config, Session
 
 def run(args):
     conf = Config(args.config)

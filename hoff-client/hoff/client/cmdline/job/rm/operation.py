@@ -1,4 +1,4 @@
-from hoffclient import Config, Session
+from hoff.client import Config, Session
 
 def run(args):
     conf = Config(args.config)

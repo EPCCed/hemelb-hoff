@@ -5,7 +5,7 @@ from . import job
 from . import output
 
 def run(args):
-    mod = importlib.import_module(args.module, package='hoffclient.cmdline')
+    mod = importlib.import_module(args.module, package='hoff.client.cmdline')
     f = getattr(mod, args.function)
     return f(args)
 

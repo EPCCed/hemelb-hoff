@@ -1,6 +1,6 @@
 from __future__ import print_function
 import argparse
-from hoffclient import Config, Session
+from hoff.client import Config, Session
 
 class Column(object):
     def __init__(self, title, data, format_template, formatter=str):

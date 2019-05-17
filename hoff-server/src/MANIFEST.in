@@ -1,0 +1,2 @@
+graft hoffserver/templates
+global-exclude *.pyc

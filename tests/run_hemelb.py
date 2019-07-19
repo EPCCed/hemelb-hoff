@@ -49,7 +49,7 @@ class Machine:
 
 class Cirrus(Machine):
     CORES_PER_NODE = 36
-    KNOWN_NODES = [1, 2, 4, 8, 16]
+    KNOWN_NODES = [1, 2, 4, 8, 16, 32]
     TEMPLATE = 'cirrus_mouse_{}'
 
 

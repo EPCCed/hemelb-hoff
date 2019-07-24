@@ -1,0 +1,12 @@
+version: "3.3"
+services:
+  db:
+    secrets:
+      - db_web_password
+      - web_admin_password
+    volumes:
+      - dbadmin:/dbadmin
+volumes:
+  dbadmin:
+    external: true
+

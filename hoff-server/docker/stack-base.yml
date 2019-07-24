@@ -1,0 +1,68 @@
+version: "3.3"
+
+services:
+  db:
+    image: mariadb:10.3
+    environment:
+      MYSQL_DATABASE: compbiomed
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+      MYSQL_USER: webcompbiomed
+      MYSQL_PASSWORD_FILE: /run/secrets/db_web_password
+    volumes:
+      - db_data:/var/lib/mysql
+    secrets:
+      - db_root_password
+      - db_web_password
+      - web_admin_password
+    configs:
+      - source: db_schema
+        target: /docker-entrypoint-initdb.d/schema.sql
+      - source: db_admin_user
+        target: /docker-entrypoint-initdb.d/user.sh
+
+  flask:
+    image: localhost:5000/hoff/server:latest
+    depends_on:
+      - db
+    volumes:
+      - hoff_data:/hoffdata
+    configs:
+      - source: hoffserver.conf
+        target: /etc/hoffserver.conf
+      - source: gunicorn.conf
+        target: /etc/gunicorn.conf
+    secrets:
+      - db_web_password
+      - flask_secret_key
+      - flask_security_salt
+    environment:
+      HOFFSERVER_CONFIG: /etc/hoffserver.conf
+      GUNICORN_CONFIG: /etc/gunicorn.conf
+    ports:
+      - "8000:8000"
+
+secrets:
+  db_root_password:
+    file: db_root_password
+  db_web_password:
+    file: db_web_password
+  web_admin_password:
+    file: web_admin_password
+  flask_secret_key:
+    file: flask_secret_key
+  flask_security_salt:
+    file: flask_security_salt
+
+volumes:
+  db_data:
+  hoff_data:
+
+configs:
+  db_schema:
+    file: compbiomed.sql
+  db_admin_user:
+    file: init_users.sh
+  hoffserver.conf:
+    file: hoffserver.conf
+  gunicorn.conf:
+    file: gunicorn.conf

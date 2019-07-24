@@ -21,7 +21,7 @@ DATABASE_FILE = "compbiomed"
 # the complete path to our running database
 # note that the account used here should not have any schema modification permissions,
 # ie no table drops or creation
-SQLALCHEMY_DATABASE_URI = "mysql://web:web@localhost/" + DATABASE_FILE
+SQLALCHEMY_DATABASE_URI = "mysql://user:pass@host/" + DATABASE_FILE
 
 
 # Application logging file name

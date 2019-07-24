@@ -14,15 +14,6 @@
 
 from __future__ import print_function
 from flask_admin import Admin
-from config import (
-    SECRET_KEY,
-    SQLALCHEMY_DATABASE_URI,
-    INPUT_STAGING_AREA,
-    OUTPUT_STAGING_AREA,
-    INPUTSET_STAGING_AREA,
-    MAX_USER_JOBS,
-    REMOTE_JOB_STATE_REFRESH_PERIOD,
-)
 from utils import (
     queryresult_to_dict,
     queryresult_to_array,
@@ -65,9 +56,15 @@ POWERUSER_ROLE = "poweruser"
 scheduler = BackgroundScheduler()
 
 
-app = Flask(__name__, static_url_path="/home/ubuntu/PycharmProjects/hemelb-hoff/static")
-app.config.from_pyfile("config.py")
+app = Flask(__name__)
 
+app.config.from_object("hoffserver.config")
+app.config.from_envvar("HOFFSERVER_CONFIG")
+
+# Commonly used conf vars:
+INPUT_STAGING_AREA = app.config["INPUT_STAGING_AREA"]
+OUTPUT_STAGING_AREA = app.config["OUTPUT_STAGING_AREA"]
+INPUTSET_STAGING_AREA = app.config["INPUTSET_STAGING_AREA"]
 
 admin = Admin(
     app,
@@ -77,8 +74,6 @@ admin = Admin(
 )
 
 # add database connection
-app.config["SECRET_KEY"] = SECRET_KEY
-app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
 db = SQLAlchemy(app)
 
 
@@ -328,7 +323,7 @@ def create_new_job():
     user_id = current_user.get_id()
     result = db.engine.execute(text(cmd), user_id=user_id)
     total_jobs = int(result.fetchone()["TOTAL_JOBS"])
-    if total_jobs >= MAX_USER_JOBS:
+    if total_jobs >= app.config["MAX_USER_JOBS"]:
         abort(500, "Maximum number of user jobs exceeded - delete some jobs")
 
     # look for json job description in payload
@@ -1123,7 +1118,8 @@ def retrieve_output_files(job_id):
 
 
 scheduler.add_job(
-    refresh_job_state, "interval", minutes=REMOTE_JOB_STATE_REFRESH_PERIOD
+    refresh_job_state, "interval",
+    minutes=app.config["REMOTE_JOB_STATE_REFRESH_PERIOD"]
 )
 scheduler.start()
 

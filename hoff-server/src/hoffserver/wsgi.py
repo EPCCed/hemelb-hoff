@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os, sys
-
-sys.path.append("/home/ubuntu/hemelb-hoff")
 from app import app as application
 
 if __name__ == "__main__":

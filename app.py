@@ -17,7 +17,7 @@
 
 from flask_admin import Admin
 from config import SECRET_KEY, SQLALCHEMY_DATABASE_URI, INPUT_STAGING_AREA, OUTPUT_STAGING_AREA, \
-    INPUTSET_STAGING_AREA, MAX_USER_JOBS, REMOTE_JOB_STATE_REFRESH_PERIOD
+    INPUTSET_STAGING_AREA, MAX_USER_JOBS, REMOTE_JOB_STATE_REFRESH_PERIOD, APP_STATIC_URL, APP_LOGFILE
 from utils import queryresult_to_dict, queryresult_to_array, compute_hash_for_dir_contents
 from flask_sqlalchemy import SQLAlchemy
 from flask_security import Security, SQLAlchemyUserDatastore, \
@@ -41,6 +41,10 @@ from werkzeug.utils import secure_filename
 import shutil
 import re
 from remote_command import run_remote_command
+from logging.config import dictConfig
+import json
+
+
 
 # role definitions
 SUPERUSER_ROLE = 'superuser'
@@ -49,8 +53,53 @@ POWERUSER_ROLE = 'poweruser'
 
 scheduler = BackgroundScheduler()
 
+# configure the logger
+#dictConfig({
+#    'version': 1,
+#    'formatters': {'default': {
+#        'format': '[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
+#    }},
+#    'handlers': {'wsgi': {
+#        'class': 'logging.StreamHandler',
+#        'stream': 'ext://flask.logging.wsgi_errors_stream',
+#        'formatter': 'default'
+#    }},
+#    'root': {
+#        'level': 'INFO',
+#        'handlers': ['wsgi']
+#    }
+#})
 
-app = Flask(__name__, static_url_path='/home/ubuntu/PycharmProjects/hemelb-hoff/static')
+dictConfig({
+    'version': 1,
+    'formatters': {'default': {
+        'format': '[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
+    }},
+    'handlers': {
+        'wsgi': {
+        'class': 'logging.StreamHandler',
+        'stream': 'ext://flask.logging.wsgi_errors_stream',
+        'formatter': 'default'
+    },
+        'log_file_handler': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': APP_LOGFILE,
+            'formatter': 'default',
+            'maxBytes': 485760,
+            'backupCount': 5,
+            'encoding': 'utf8'
+        },
+    },
+    'root': {
+        'level': 'INFO',
+        'handlers': ['wsgi', 'log_file_handler']
+    }
+})
+
+
+
+app = Flask(__name__, static_url_path=APP_STATIC_URL)
 app.config.from_pyfile('config.py')
 
 
@@ -353,6 +402,7 @@ def create_new_job():
         job_spec['service_id'] = result['service_id']
         job_spec['executable'] = result['executable']
         job_spec['arguments'] = result['arguments']
+        job_spec['env'] = result['env']
         job_spec['num_total_cpus'] = result['num_total_cpus']
         job_spec['total_physical_memory'] = result['total_physical_memory']
         job_spec['wallclock_limit'] = result['wallclock_limit']
@@ -365,11 +415,9 @@ def create_new_job():
 
     # now look at the rest of the payload; user-supplied arguments override template arguments
 
-    if 'arguments' in payload: job_spec['arguments'] = payload.get('arguments')
-
-        # name, service, and executable are mandatory,
-        # otherwise the job is pointless
-
+    if 'arguments' in payload:
+        arguments = payload.get('arguments')
+        job_spec['arguments'] = arguments
 
 
     # for security reasons only powerusers or admins may override other aspects of the job
@@ -410,12 +458,19 @@ def create_new_job():
 
 
     # sanity check env - must be able to turn it into a dict
-    #env = payload.get('env')
-    #if env is not None:
-    #    try:
-    #        sanitized_env = ast.literal_eval(env)
-    #    except Exception as e:
-    #        abort(500, "Cannot convert env to a dict")
+    if 'env' in payload:
+        env = payload.get('env')
+        try:
+            env_list = [str(s) for s in env.split()]
+            print env_list
+            env_dict = {}
+            for p in env_list:
+                q = p.split("=")
+                env_dict[q[0]] = q[1]
+        except Exception as e:
+            abort(500, "Invalid env specification: " + e.message)
+
+
 
     job_uuid = str(uuid.uuid4())
 
@@ -425,14 +480,14 @@ def create_new_job():
     user_id = current_user.get_id()
 
     cmd = 'INSERT INTO JOB(user_id, name, executable, service_id, local_job_id, arguments, num_total_cpus, ' \
-          'total_physical_memory, wallclock_limit, project, queue, filter, extended) \
+          'total_physical_memory, wallclock_limit, project, queue, filter, extended, env) \
         VALUES(:user_id, :name, :executable, :service_id, :local_job_id, :arguments, ' \
-          ':num_total_cpus, :total_physical_memory, :wallclock_limit, :project, :queue, :filter, :extended )'
+          ':num_total_cpus, :total_physical_memory, :wallclock_limit, :project, :queue, :filter, :extended, :env )'
     db.engine.execute(text(cmd), user_id=user_id, name=job_spec['job_name'], executable=job_spec['executable'],
                       service_id=job_spec['service_id'], local_job_id=job_uuid, arguments=job_spec['arguments'],
                       num_total_cpus=job_spec['num_total_cpus'], total_physical_memory=job_spec['total_physical_memory'],
                       wallclock_limit=job_spec['wallclock_limit'], project=job_spec['project'], queue=job_spec['queue'],
-                      filter=job_spec['filter'], extended=job_spec['extended'])
+                      filter=job_spec['filter'], extended=job_spec['extended'], env=job_spec['env'])
 
     # create a staging area for this job
     try:
@@ -562,8 +617,9 @@ def submit_job(id):
     # look for additional information, will set as NULL if not in payload
 
     if result['arguments'] is not None:
-        argument_list = result['arguments'].split(',')
-        jd['arguments'] = argument_list
+        arguments = result['arguments']
+        arguments_list =  [str(s) for s in arguments.split()]
+        jd['arguments'] = arguments_list
 
     jd['num_total_cpus'] = result['num_total_cpus']
     jd['total_physical_memory'] = result['total_physical_memory']
@@ -573,12 +629,19 @@ def submit_job(id):
     jd['extended'] = result['extended']
 
     # if env is specified, we need to turn the arguments into a dict
-    # if result['env'] is not None:
-    #    try:
-    #        jd['env'] = ast.literal_eval(result['env'])
-    #        print type(jd['env']), jd['env']
-    #    except Exception as e:
-    #        abort(500, "couldn't convert env parameter to a dict")
+    # we expect the string to take the form name=value name=value etc
+    if result['env'] is not None:
+        try:
+            env = result['env']
+            env_list = [str(s) for s in env.split()]
+            env_dict = {}
+            for p in env_list:
+                q = p.split("=")
+                env_dict[q[0]] = q[1]
+            jd['env'] = env_dict
+        except Exception as e:
+            app.logger.error(e.message)
+
 
     cmd = "UPDATE JOB SET state=:state WHERE local_job_id=:local_job_id"
     db.engine.execute(text(cmd), state="STAGING", local_job_id=id)
@@ -1041,6 +1104,9 @@ def get_service(service_id):
     service["user_key"] = result["user_key"]
     service["file_url"] = result["file_url"]
     service["working_directory"] = result["working_directory"]
+
+    print(service)
+
     return service
 
 
@@ -1057,19 +1123,23 @@ def retrieve_output_files(job_id):
         REMOTE_WORKING_DIR = os.path.join(service['working_directory'], str(job_id))
         filter = job['filter']
         try:
-            stage_output_files(REMOTE_WORKING_DIR, local_file_dir, service, filter)
-            cleanup_directory(REMOTE_WORKING_DIR, service)
+            log_message = "Staging output files: " + REMOTE_WORKING_DIR + "," + local_file_dir
+            app.logger.info(log_message)
+            stage_output_files(REMOTE_WORKING_DIR, local_file_dir, service, filter, app.logger)
+            app.logger.info("Staging complete")
+
+            #cleanup_directory(REMOTE_WORKING_DIR, service)
 
             # force delete the remote working directory, saga doesn't currently do nested subdirs
-            try:
-                scheduler_url = service["scheduler_url"]
-                index = scheduler_url.find('//')
-                server_name = scheduler_url[index + 2:]
-                cmd = "rm -rf " + REMOTE_WORKING_DIR
-                stdout, stderr = run_remote_command(server_name, service['username'], service['user_pass'], cmd)
+            #try:
+            #    scheduler_url = service["scheduler_url"]
+            #    index = scheduler_url.find('//')
+            #    server_name = scheduler_url[index + 2:]
+            #    cmd = "rm -rf " + REMOTE_WORKING_DIR
+            #    stdout, stderr = run_remote_command(server_name, service['username'], service['user_pass'], cmd)
 
-            except Exception as e:
-                print e.message
+            #except Exception as e:
+            #    app.logger.message("retrieve_output_files:" + e.message)
 
 
 

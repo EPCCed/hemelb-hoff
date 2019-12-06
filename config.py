@@ -9,6 +9,8 @@ DATABASE_FILE = 'compbiomed'
 # ie no table drops or creation
 SQLALCHEMY_DATABASE_URI = 'mysql://web:web@localhost/' + DATABASE_FILE
 
+# path for static web content
+APP_STATIC_URL = '/home/ubuntu/PycharmProjects/hemelb-hoff/static'
 
 # Application logging file name
 APP_LOGFILE = '/home/ubuntu/foo.log'
@@ -59,3 +61,10 @@ MAX_USER_JOBS = 10
 
 # time (in minutes) to wait before checking remote job state
 REMOTE_JOB_STATE_REFRESH_PERIOD = 2
+
+# WOS config stuff
+CIRRUS_S3_ENDPOINT = "https://cirrus-s3.epcc.ed.ac.uk"
+CIRRUS_WOS_ACCESS_KEY = ""
+CIRRUS_WOS_SECRET_KEY = ""
+CIRRUS_WOS_HOFF_BUCKET = ""
+CIRRUS_S3_DEFAULT_REGION = ""

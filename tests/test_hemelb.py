@@ -21,7 +21,7 @@ from config import MAX_USER_JOBS
 import uuid
 from tests.test_params import LOGIN_URL, JOBS_URL, INPUTSETS_URL, TEST_TEMPLATE_NAME
 from tests.test_params import login_credentials
-
+import os.path
 
 # main set of test functions for the REST interfaces
 
@@ -29,16 +29,21 @@ from tests.test_params import login_credentials
 payload = {}
 payload['name'] = "polnet_test"
 payload['service'] = "CIRRUS"
-payload['executable'] = "/lustre/home/d411/malcolmi/test_submit/submit.sh"
-payload['num_total_cpus'] = 36
+#payload['executable'] = "/lustre/home/d411/malcolmi/test_submit/submit.sh"
+payload['executable'] = "/lustre/home/shared/d411/hemelb/hoff/templates/master-mouse-bfl-nash-2.sh"
+payload['num_total_cpus'] = 2
 payload['wallclock_limit'] = 5
 payload['project'] = "d411-polnet"
 payload['arguments'] = "test.xml"
-payload['filter'] = "results\/.*"
-payload['extended'] = "#PBS -l place=scatter:excl"
+#payload['filter'] = "results\/.*"
+#payload['extended'] = "#PBS -l place=scatter:excl"
 
-small_files = { 'config.gmy': open('/home/ubuntu/config.gmy','rb'),
-          'test.xml': open('/home/ubuntu/config.xml','rb')
+#small_files = { 'config.gmy': open('/home/ubuntu/config.gmy','rb'),
+#          'test.xml': open('/home/ubuntu/config.xml','rb')
+#        }
+
+small_files = { 'config.gmy': open('/home/ubuntu/Myh9KO_ret1_mask_corrected_tubed_smoothed.gmy','rb'),
+          'test.xml': open('/home/ubuntu/Myh9KO_ret1_mask_corrected_tubed_smoothed.xml','rb')
         }
 
 big_files = {
@@ -56,9 +61,22 @@ lisa_payload['num_total_cpus'] = 4
 lisa_payload['wallclock_limit'] = 5
 #payload['project'] = "d411-polnet"
 lisa_payload['arguments'] = "test.xml"
-lisa_payload['filter'] = "results\/.*"
+#lisa_payload['filter'] = "results\/.*"
 #payload['extended'] = "#PBS -l place=scatter:excl"
 
+
+def download_file(JOBS_URL, job_id, filename, output_dir, session):
+    file_url = JOBS_URL + "/" + job_id + "/files/" + filename
+    local_filename = os.path.join(output_dir, filename)
+
+    if not os.path.exists(os.path.dirname(local_filename)):
+        os.makedirs(os.path.dirname(local_filename))
+
+    r = session.get(file_url, stream=True)
+    with open(local_filename, 'wb') as f:
+        for chunk in r.iter_content(chunk_size=1024):
+            if chunk:  # filter out keep-alive new chunks
+                f.write(chunk)
 
 def testJob():
 
@@ -105,7 +123,7 @@ def testJob():
             state = p.content
             print state
 
-        assert state == 'Done'
+#        assert state == 'Done'
 
         file_list_url = JOBS_URL + "/" + str(job_id) + "/files"
         p = s.get(file_list_url)
@@ -116,18 +134,18 @@ def testJob():
             print f
 
 
-        print "deleting job"
-        delete_url = JOBS_URL + "/" + str(job_id)
-        p = s.delete(delete_url)
-        assert p.status_code == 200
-        print p.status_code
+        #print "deleting job"
+        #delete_url = JOBS_URL + "/" + str(job_id)
+        #p = s.delete(delete_url)
+        #assert p.status_code == 200
+        #print p.status_code
 
-        print "checking deleted state"
-        get_url = JOBS_URL + "/" + str(job_id) + "/state"
-        p = s.get(get_url)
-        state = p.content
-        print "final state is " + state
-        assert state == 'DELETED'
+        #print "checking deleted state"
+        #get_url = JOBS_URL + "/" + str(job_id) + "/state"
+        #p = s.get(get_url)
+        #state = p.content
+        #print "final state is " + state
+        #assert state == 'DELETED'
 
 
 
@@ -219,7 +237,9 @@ def testTemplate():
 
         # now try a real one
         template_payload = {'template_name': TEST_TEMPLATE_NAME, 'arguments': "test.xml" }
+
         p = s.post(JOBS_URL, json=template_payload)
+        print p.content
         assert p.status_code == 200
         job_id = p.content
         print job_id
@@ -249,7 +269,19 @@ def testTemplate():
             state = p.content
             print state
 
-        assert state == 'Done'
+#        assert state == 'Done'
+
+        # job has completed or failed. check to see if the job has been retrieved
+        get_retrieved_state_url = JOBS_URL + "/" + str(job_id) + "/retrieved"
+        p = s.get(get_retrieved_state_url)
+        assert p.status_code == 200
+        retrieved = int(p.content)
+
+        while retrieved != 1:
+            time.sleep(30)
+            p = s.get(get_retrieved_state_url)
+            assert p.status_code == 200
+            retrieved = int(p.content)
 
         file_list_url = JOBS_URL + "/" + str(job_id) + "/files"
         p = s.get(file_list_url)
@@ -257,20 +289,20 @@ def testTemplate():
         file_list = p.json()
 
         for f in file_list:
-            print f
+            download_file(JOBS_URL, job_id, f, '/home/ubuntu/results', s)
 
-        print "deleting job"
-        delete_url = JOBS_URL + "/" + str(job_id)
-        p = s.delete(delete_url)
-        assert p.status_code == 200
-        print p.status_code
+        #print "deleting job"
+        #delete_url = JOBS_URL + "/" + str(job_id)
+        #p = s.delete(delete_url)
+        #assert p.status_code == 200
+        #print p.status_code
 
-        print "checking deleted state"
-        get_url = JOBS_URL + "/" + str(job_id) + "/state"
-        p = s.get(get_url)
-        state = p.content
-        print "final state is " + state
-        assert state == 'DELETED'
+        #print "checking deleted state"
+        #get_url = JOBS_URL + "/" + str(job_id) + "/state"
+        #p = s.get(get_url)
+        #state = p.content
+        #print "final state is " + state
+        #assert state == 'DELETED'
 
 
 # note: this test relies on the user having no active jobs in the test database
@@ -363,8 +395,8 @@ def testInputSet():
 
 
 def main():
-    testLisaJob()
-    testJob()
+#    testLisaJob()
+    #testJob()
     #testInputSet()
     #testJobLimit()
     testTemplate()

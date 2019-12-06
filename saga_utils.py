@@ -20,6 +20,35 @@ import saga
 import os
 import re
 
+import boto3
+from botocore.exceptions import ClientError
+
+from config import CIRRUS_WOS_ACCESS_KEY
+from config import CIRRUS_WOS_SECRET_KEY
+from config import CIRRUS_WOS_HOFF_BUCKET
+from config import CIRRUS_S3_ENDPOINT
+from config import CIRRUS_S3_DEFAULT_REGION
+
+def generate_presigned_url(bucket_name, path, expiration):
+
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=CIRRUS_WOS_ACCESS_KEY,
+        aws_secret_access_key=CIRRUS_WOS_SECRET_KEY,
+        region_name=CIRRUS_S3_DEFAULT_REGION
+    )
+    try:
+        response = s3_client.generate_presigned_url('get_object',
+                                                    Params={'Bucket': bucket_name,
+                                                            'Key': path},
+                                                    ExpiresIn=expiration)
+    except ClientError as e:
+        return None
+
+        # The response contains the presigned URL
+    return response
+
+
 
 
 
@@ -30,6 +59,57 @@ JOB_STDOUT = "job.stdout"
 JOB_STDERR = "job.stderr"
 
 
+def get_presigned_url(local_job_id, path):
+    bucket_name = CIRRUS_WOS_HOFF_BUCKET + "-" + local_job_id
+    s3 = boto3.client('s3', endpoint_url=CIRRUS_S3_ENDPOINT, aws_access_key_id=CIRRUS_WOS_ACCESS_KEY,
+          aws_secret_access_key=CIRRUS_WOS_SECRET_KEY, verify=False)
+
+    return s3.generate_presigned_url(
+        ClientMethod='get_object',
+        Params={
+            'Bucket': bucket_name,
+            'Key': path,
+        }
+    )
+
+def get_s3_bucket(local_job_id):
+    bucket_name = CIRRUS_WOS_HOFF_BUCKET + "-" + local_job_id
+    s3 = boto3.resource('s3', endpoint_url=CIRRUS_S3_ENDPOINT, aws_access_key_id=CIRRUS_WOS_ACCESS_KEY,
+          aws_secret_access_key=CIRRUS_WOS_SECRET_KEY, verify=False)
+    return s3.Bucket(bucket_name)
+
+
+def copy_local_files_to_s3(local_job_dir):
+    bucket = get_s3_bucket(os.path.basename(local_job_dir))
+    response = bucket.create()
+    for root, dir, files in os.walk(local_job_dir):
+        for f in files:
+            filename = os.path.join(root, f)
+            keyname = os.path.relpath(filename, local_job_dir)
+            response = bucket.upload_file(filename, keyname)
+
+
+def list_s3_file_for_job(job_id):
+    bucket = get_s3_bucket(os.path.basename(job_id))
+    keys = []
+    # note that s3 paginates after 1000 objects
+    # we assumes that Hoff / Hemelb jobs only produce a small number of files, so we can get away with this
+    # otherwise we will have to paginate
+    for file in bucket.objects.all():
+        keys.append(file.key)
+    return keys
+
+
+def s3_delete_files_for_job(job_id):
+    bucket_name = CIRRUS_WOS_HOFF_BUCKET + "-" + job_id
+    s3 = boto3.resource('s3', endpoint_url=CIRRUS_S3_ENDPOINT, aws_access_key_id=CIRRUS_WOS_ACCESS_KEY,
+                        aws_secret_access_key=CIRRUS_WOS_SECRET_KEY, verify=False)
+    bucket = s3.Bucket(CIRRUS_WOS_HOFF_BUCKET)
+    filer = job_id + '/'
+    # warning - the next line may only work if there are less than 1000 objects present,
+    # otherwise a paginating solution is needed
+    # for Hoff / Hemelb jobs we should get away with this ok
+    bucket.objects.filter(Prefix=filter).delete()
 
 
 
@@ -103,6 +183,7 @@ def submit_saga_job(job_description, service):
 
 
         # Create a job service object pointing at our host
+        print(service['scheduler_url'])
         js = saga.job.Service(service['scheduler_url'], session)
 
         # define our job by building a job description and populating it
@@ -152,6 +233,7 @@ def submit_saga_job(job_description, service):
 
         # specify the working directory for the job
         jd.working_directory = REMOTE_WORKING_DIR
+        print(REMOTE_WORKING_DIR)
 
         # Some applications may require exclusive use of nodes
         # SAGA does not support this;
@@ -162,7 +244,10 @@ def submit_saga_job(job_description, service):
         # Create a new job from the job description. The initial state of
         # the job is 'New'.
 
+        print("creating remote job")
+
         myjob = js.create_job(jd)
+        print("testing ...")
         myjob.run()
         js.close()
         return myjob.id
@@ -188,7 +273,7 @@ def cancel_job(job_id, service):
         raise e
 
 
-def copy_remote_directory_to_local(remote_dir, local_job_dir, base_dir, filter):
+def copy_remote_directory_to_local(remote_dir, local_job_dir, base_dir, filter, logger):
 
     if not os.path.exists(local_job_dir):
         os.makedirs(local_job_dir)
@@ -207,6 +292,7 @@ def copy_remote_directory_to_local(remote_dir, local_job_dir, base_dir, filter):
                     # get the relative file path
                     relative_file_path = os.path.join(relative_path, str(f))
                     if re.match(filter, relative_file_path) is not None:
+                        logger.info("Copying output file " + f)
                         remote_dir.copy(f, outfiletarget)
 
                 except Exception as e:
@@ -222,7 +308,7 @@ def copy_remote_directory_to_local(remote_dir, local_job_dir, base_dir, filter):
 
 
 
-def stage_output_files(remote_working_dir, local_job_dir, service, filter):
+def stage_output_files(remote_working_dir, local_job_dir, service, filter, logger):
 
     try:
 
@@ -237,13 +323,16 @@ def stage_output_files(remote_working_dir, local_job_dir, service, filter):
         base_url = str(remote_dir.get_url()) + "/"
 
         # always copy the stdout / stderr files
-        try:
-            for f in [JOB_STDERR, JOB_STDOUT]:
+
+        for f in [JOB_STDERR, JOB_STDOUT]:
+            try:
                 outfiletarget = 'file://localhost/' + local_job_dir
+                logger.info("Copying output file " + f)
                 remote_dir.copy(f, outfiletarget)
-        except Exception as e:
-            # TODO - logging?
-            print(e.message)
+                logger.info("Copied output file " + f)
+            except Exception as e:
+                message = "error copying output file: " + e.message
+                logger.error(message)
 
         for f in remote_dir.list():
             if remote_dir.is_file(f):
@@ -251,8 +340,10 @@ def stage_output_files(remote_working_dir, local_job_dir, service, filter):
                 if filter is not None:
                     try:
                         if re.match(filter, str(f)):
+                            logger.info("Copying output file " + f)
                             remote_dir.copy(f, outfiletarget)
                     except Exception as e:
+                        logger.error("Error in filter, defaulting to copying output file " + f)
                         # filter failed, fallback to copying the file rather than losing data
                         remote_dir.copy(f, outfiletarget)
                 else:
@@ -262,7 +353,7 @@ def stage_output_files(remote_working_dir, local_job_dir, service, filter):
             else:
                 path = str(f)
                 local_copy_dir = os.path.join(local_job_dir, path)
-                copy_remote_directory_to_local(remote_dir.open_dir(f), local_copy_dir, base_url, filter)
+                copy_remote_directory_to_local(remote_dir.open_dir(f), local_copy_dir, base_url, filter, logger)
 
         return 0
 

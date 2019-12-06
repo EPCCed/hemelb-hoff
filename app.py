@@ -378,6 +378,7 @@ def create_new_job():
         'service_id': None,
         'executable': None,
         'arguments': None,
+        'env': None,
         'num_total_cpus': None,
         'total_physical_memory': None,
         'wallclock_limit': None,
@@ -467,6 +468,7 @@ def create_new_job():
             for p in env_list:
                 q = p.split("=")
                 env_dict[q[0]] = q[1]
+            job_spec['env'] = env
         except Exception as e:
             abort(500, "Invalid env specification: " + e.message)
 
@@ -638,7 +640,7 @@ def submit_job(id):
             for p in env_list:
                 q = p.split("=")
                 env_dict[q[0]] = q[1]
-            jd['env'] = env_dict
+            jd['environment'] = env_dict
         except Exception as e:
             app.logger.error(e.message)
 

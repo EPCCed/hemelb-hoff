@@ -183,7 +183,6 @@ def submit_saga_job(job_description, service):
 
 
         # Create a job service object pointing at our host
-        print(service['scheduler_url'])
         js = saga.job.Service(service['scheduler_url'], session)
 
         # define our job by building a job description and populating it
@@ -211,9 +210,9 @@ def submit_saga_job(job_description, service):
         if wallclock_limit is not None:
             jd.wall_time_limit = wallclock_limit
 
-        #env = job_description.get('env')
-        #if env is not None:
-        #    jd.environment = env
+        env = job_description.get('environment')
+        if env is not None:
+            jd.environment = env
 
         arguments = job_description.get('arguments')
         if arguments is not None:
@@ -233,7 +232,7 @@ def submit_saga_job(job_description, service):
 
         # specify the working directory for the job
         jd.working_directory = REMOTE_WORKING_DIR
-        print(REMOTE_WORKING_DIR)
+
 
         # Some applications may require exclusive use of nodes
         # SAGA does not support this;
@@ -244,10 +243,7 @@ def submit_saga_job(job_description, service):
         # Create a new job from the job description. The initial state of
         # the job is 'New'.
 
-        print("creating remote job")
-
         myjob = js.create_job(jd)
-        print("testing ...")
         myjob.run()
         js.close()
         return myjob.id
@@ -304,7 +300,7 @@ def copy_remote_directory_to_local(remote_dir, local_job_dir, base_dir, filter, 
         else:
             path = str(f)
             local_copy_dir = os.path.join(local_job_dir, path)
-            copy_remote_directory_to_local(remote_dir.open_dir(f), local_copy_dir, base_dir, filter)
+            copy_remote_directory_to_local(remote_dir.open_dir(f), local_copy_dir, base_dir, filter, logger)
 
 
 

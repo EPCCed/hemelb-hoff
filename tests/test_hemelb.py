@@ -236,7 +236,7 @@ def testTemplate():
         assert p.status_code == 404
 
         # now try a real one
-        template_payload = {'template_name': TEST_TEMPLATE_NAME, 'arguments': "test.xml" }
+        template_payload = {'template_name': TEST_TEMPLATE_NAME, 'arguments': "test.xml", "env": "var1=val1 var2=val2 var3=val3" }
 
         p = s.post(JOBS_URL, json=template_payload)
         print p.content

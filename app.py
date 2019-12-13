@@ -44,7 +44,7 @@ from remote_command import run_remote_command
 from logging.config import dictConfig
 import json
 
-
+from wos_utils import s3_upload, s3_list_files_for_job, get_presigned_url, s3_delete_files_for_job
 
 # role definitions
 SUPERUSER_ROLE = 'superuser'
@@ -463,7 +463,6 @@ def create_new_job():
         env = payload.get('env')
         try:
             env_list = [str(s) for s in env.split()]
-            print env_list
             env_dict = {}
             for p in env_list:
                 q = p.split("=")
@@ -756,11 +755,15 @@ def get_job_output_file_list(id):
     # list the files in the job's output directory
     # in the case of Azure we would list the output storage container
 
-    filelist = []
-    base_dir = os.path.join(OUTPUT_STAGING_AREA, local_job_id)
-    for path, subdirs, files in os.walk(base_dir):
-        for name in files:
-            filelist.append( os.path.join(path, name).replace(base_dir+"/",''))
+    #filelist = []
+    #base_dir = os.path.join(OUTPUT_STAGING_AREA, local_job_id)
+    #for path, subdirs, files in os.walk(base_dir):
+    #    for name in files:
+    #        filelist.append( os.path.join(path, name).replace(base_dir+"/",''))
+
+
+    # list the files from the WOS
+    filelist = s3_list_files_for_job(local_job_id)
 
     return jsonify(filelist)
 
@@ -784,14 +787,18 @@ def get_job_output_file(job_id, path):
         abort(403)
 
     # check if the requested file exists
-    # we need a check to see if we are listing normal files or redirecting to Azure - TODO
+    # we need a check to see if we are listing normal files or redirecting to WOS - TODO
+
+    key_path = os.path.join(job_id, path)
+    url = get_presigned_url(key_path)
+    return redirect(url, code=302)
 
 
-    exists = os.path.isfile(os.path.join(OUTPUT_STAGING_AREA, local_job_id, path))
-    if not exists:
-        abort(404)
+    #exists = os.path.isfile(os.path.join(OUTPUT_STAGING_AREA, local_job_id, path))
+    #if not exists:
+    #    abort(404)
 
-    return send_from_directory(directory=os.path.join(OUTPUT_STAGING_AREA, local_job_id), filename=path)
+    #return send_from_directory(directory=os.path.join(OUTPUT_STAGING_AREA, local_job_id), filename=path)
 
 
 @app.route('/jobs/<id>', methods=['DELETE'])
@@ -849,6 +856,9 @@ def delete_job(id):
         LOCAL_INPUT_DIR = os.path.join(INPUT_STAGING_AREA, str(id))
         if os.path.exists(LOCAL_INPUT_DIR):
             shutil.rmtree(LOCAL_INPUT_DIR)
+
+        # delete any files on the WOS
+        s3_delete_files_for_job(id)
 
 
         # update the job to show as deleted
@@ -1043,6 +1053,7 @@ def delete_inputset(id):
         if not ( current_user.has_role(SUPERUSER_ROLE) or current_user.has_role(POWERUSER_ROLE)):
             abort(403)
 
+
     # delete the inputset directory if it exists, otherwise return a not found
     dirpath = os.path.join(INPUTSET_STAGING_AREA, id)
     if os.path.exists(dirpath):
@@ -1107,8 +1118,6 @@ def get_service(service_id):
     service["file_url"] = result["file_url"]
     service["working_directory"] = result["working_directory"]
 
-    print(service)
-
     return service
 
 
@@ -1130,7 +1139,18 @@ def retrieve_output_files(job_id):
             stage_output_files(REMOTE_WORKING_DIR, local_file_dir, service, filter, app.logger)
             app.logger.info("Staging complete")
 
-            #cleanup_directory(REMOTE_WORKING_DIR, service)
+            cleanup_directory(REMOTE_WORKING_DIR, service)
+
+            # copy the local files to the WOS
+            try:
+                copy_local_files_to_s3(local_file_dir, job_id)
+                # delete the local files once they have been copied to the WOS
+                shutil.rmtree(local_file_dir)
+            except Exception as e:
+                app.logger.error(e.message())
+
+
+
 
             # force delete the remote working directory, saga doesn't currently do nested subdirs
             #try:
@@ -1154,6 +1174,15 @@ def retrieve_output_files(job_id):
 
     except Exception as e:
         app.logger.error("retrieve_output_files:" + e.message)
+
+
+def copy_local_files_to_s3(local_job_dir, parent_dir):
+
+    for root, dir, files in os.walk(local_job_dir):
+        for f in files:
+            filename = os.path.join(root, f)
+            keyname = os.path.join(parent_dir, os.path.relpath(filename, local_job_dir))
+            s3_upload(filename, keyname)
 
 
 

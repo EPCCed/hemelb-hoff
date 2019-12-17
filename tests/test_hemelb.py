@@ -53,6 +53,10 @@ big_files = {
 }
 
 
+
+sharpen_files = { 'fuzzy.pgm': open('/home/ubuntu/fuzzy.pgm','rb')
+        }
+
 lisa_payload = {}
 lisa_payload['name'] = "polnet_test"
 lisa_payload['service'] = "LISA"
@@ -304,6 +308,86 @@ def testTemplate():
         #print "final state is " + state
         #assert state == 'DELETED'
 
+# submit a job by specifying a template name rather than providing a job description
+def testSharpen():
+
+    with requests.Session() as s:
+
+        p = s.post(LOGIN_URL, data=login_credentials)
+        # print the html returned or something more intelligent to see if it's a successful login page.
+        assert p.status_code == 200
+
+
+        # now try a real one
+        template_payload = {'template_name': "test_sharpen" }
+
+        p = s.post(JOBS_URL, json=template_payload)
+        print p.content
+        assert p.status_code == 200
+        job_id = p.content
+        print job_id
+
+        #upload the small input files
+        file_url = JOBS_URL + "/" + str(job_id) + "/files"
+        p = s.post(file_url, files=sharpen_files)
+        assert p.status_code == 200
+
+
+        #submit the job
+        post_url = JOBS_URL + "/" + str(job_id) + "/submit"
+        p = s.post(post_url)
+        assert p.status_code == 200
+        print p.text
+
+        #wait for completion
+        get_url = JOBS_URL + "/" + str(job_id) + "/state"
+        p = s.get(get_url)
+        assert p.status_code == 200
+        state = p.content
+
+        while state not in ['Done', 'Failed']:
+            time.sleep(60)
+            p = s.get(get_url)
+            assert p.status_code == 200
+            state = p.content
+            print state
+
+#        assert state == 'Done'
+
+        # job has completed or failed. check to see if the job has been retrieved
+        get_retrieved_state_url = JOBS_URL + "/" + str(job_id) + "/retrieved"
+        p = s.get(get_retrieved_state_url)
+        assert p.status_code == 200
+        retrieved = int(p.content)
+
+        while retrieved != 1:
+            time.sleep(30)
+            p = s.get(get_retrieved_state_url)
+            assert p.status_code == 200
+            retrieved = int(p.content)
+
+        file_list_url = JOBS_URL + "/" + str(job_id) + "/files"
+        p = s.get(file_list_url)
+        assert p.status_code == 200
+        file_list = p.json()
+
+        for f in file_list:
+            print(f)
+            download_file(JOBS_URL, job_id, f, '/home/ubuntu/results', s)
+
+        print "deleting job"
+        delete_url = JOBS_URL + "/" + str(job_id)
+        p = s.delete(delete_url)
+        assert p.status_code == 200
+        print p.status_code
+
+        print "checking deleted state"
+        get_url = JOBS_URL + "/" + str(job_id) + "/state"
+        p = s.get(get_url)
+        state = p.content
+        print "final state is " + state
+        assert state == 'DELETED'
+
 
 # note: this test relies on the user having no active jobs in the test database
 # some manual clearup will be needed after running this test
@@ -399,7 +483,8 @@ def main():
     #testJob()
     #testInputSet()
     #testJobLimit()
-    testTemplate()
+    #testTemplate()
+    testSharpen()
 
 
 

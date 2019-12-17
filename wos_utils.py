@@ -24,7 +24,7 @@ def get_bucket():
     return bucket
 
 
-def get_presigned_url(path):
+def get_presigned_url(path, expires_in = 21600):
     bucket_name = CIRRUS_WOS_HOFF_BUCKET
     s3_client = get_s3_client()
 
@@ -33,7 +33,8 @@ def get_presigned_url(path):
         Params={
             'Bucket': bucket_name,
             'Key': path,
-        }
+        },
+        ExpiresIn=expires_in
     )
 
 def s3_upload(local_path, remote_path):

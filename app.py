@@ -17,7 +17,7 @@
 
 from flask_admin import Admin
 from config import SECRET_KEY, SQLALCHEMY_DATABASE_URI, INPUT_STAGING_AREA, OUTPUT_STAGING_AREA, \
-    INPUTSET_STAGING_AREA, MAX_USER_JOBS, REMOTE_JOB_STATE_REFRESH_PERIOD, APP_STATIC_URL, APP_LOGFILE
+    INPUTSET_STAGING_AREA, MAX_USER_JOBS, REMOTE_JOB_STATE_REFRESH_PERIOD, APP_STATIC_URL, APP_LOGFILE, USE_WOS
 from utils import queryresult_to_dict, queryresult_to_array, compute_hash_for_dir_contents
 from flask_sqlalchemy import SQLAlchemy
 from flask_security import Security, SQLAlchemyUserDatastore, \
@@ -763,9 +763,16 @@ def get_job_output_file_list(id):
 
 
     # list the files from the WOS
-    filelist = s3_list_files_for_job(local_job_id)
-
-    return jsonify(filelist)
+    if USE_WOS == True:
+        filelist = s3_list_files_for_job(local_job_id)
+        return jsonify(filelist)
+    else:
+        filelist = []
+        base_dir = os.path.join(OUTPUT_STAGING_AREA, local_job_id)
+        for path, subdirs, files in os.walk(base_dir):
+            for name in files:
+                filelist.append( os.path.join(path, name).replace(base_dir+"/",''))
+                return jsonify(filelist)
 
 
 
@@ -787,18 +794,18 @@ def get_job_output_file(job_id, path):
         abort(403)
 
     # check if the requested file exists
-    # we need a check to see if we are listing normal files or redirecting to WOS - TODO
+    # we need a check to see if we are listing normal files or redirecting to WOS
 
-    key_path = os.path.join(job_id, path)
-    url = get_presigned_url(key_path)
-    return redirect(url, code=302)
+    if USE_WOS == True:
+        key_path = os.path.join(job_id, path)
+        url = get_presigned_url(key_path)
+        return redirect(url, code=302)
+    else:
+        exists = os.path.isfile(os.path.join(OUTPUT_STAGING_AREA, local_job_id, path))
+        if not exists:
+           abort(404)
 
-
-    #exists = os.path.isfile(os.path.join(OUTPUT_STAGING_AREA, local_job_id, path))
-    #if not exists:
-    #    abort(404)
-
-    #return send_from_directory(directory=os.path.join(OUTPUT_STAGING_AREA, local_job_id), filename=path)
+    return send_from_directory(directory=os.path.join(OUTPUT_STAGING_AREA, local_job_id), filename=path)
 
 
 @app.route('/jobs/<id>', methods=['DELETE'])
@@ -858,7 +865,8 @@ def delete_job(id):
             shutil.rmtree(LOCAL_INPUT_DIR)
 
         # delete any files on the WOS
-        s3_delete_files_for_job(id)
+        if USE_WOS == True:
+            s3_delete_files_for_job(id)
 
 
         # update the job to show as deleted
@@ -1142,12 +1150,13 @@ def retrieve_output_files(job_id):
             cleanup_directory(REMOTE_WORKING_DIR, service)
 
             # copy the local files to the WOS
-            try:
-                copy_local_files_to_s3(local_file_dir, job_id)
-                # delete the local files once they have been copied to the WOS
-                shutil.rmtree(local_file_dir)
-            except Exception as e:
-                app.logger.error(e.message())
+            if USE_WOS == True:
+                try:
+                    copy_local_files_to_s3(local_file_dir, job_id)
+                    # delete the local files once they have been copied to the WOS
+                    shutil.rmtree(local_file_dir)
+                except Exception as e:
+                    app.logger.error(e.message())
 
 
 

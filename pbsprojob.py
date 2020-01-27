@@ -156,10 +156,6 @@ def _pbscript_generator(url, logger, jd, ppn, gres, pbs_version, is_cray=False,
     """ generates a PBS Pro script from a SAGA job description
     """
 
-    print("========pbscript_generator=============")
-    print(ppn)
-    print("========pbscript_generator=============")
-
     pbs_params  = str()
     exec_n_args = str()
 
@@ -304,33 +300,34 @@ def _pbscript_generator(url, logger, jd, ppn, gres, pbs_version, is_cray=False,
     ncpus = nnodes * ppn
 
 
-    print "DEBUG --------"
-    print "PBS version:"
-    print pbs_version
-    print is_cray
-
     # TODO: The more we add, the more it screams for a refactoring
-    if is_cray is not "":
-        # Special cases for PBS/TORQUE on Cray. Different PBSes,
-        # different flags. A complete nightmare...
-        if 'PBSPro_10' in pbs_version:
-            logger.info("Using Cray XT (e.g. Hopper) specific '#PBS -l mppwidth=xx' flags (PBSPro_10).")
-            pbs_params += "#PBS -l mppwidth=%s \n" % jd.total_cpu_count
-        elif 'PBSPro_12' in pbs_version:
-            logger.info("Using Cray XT (e.g. Archer) specific '#PBS -l select=xx' flags (PBSPro_12).")
-            pbs_params += "#PBS -l select=%d\n" % nnodes
-        elif '4.2.6' in pbs_version:
-            logger.info("Using Titan (Cray XP) specific '#PBS -l nodes=xx'")
-            pbs_params += "#PBS -l nodes=%d\n" % nnodes
-        elif '4.2.7' in pbs_version:
-            logger.info("Using Cray XT @ NERSC (e.g. Edison) specific '#PBS -l mppwidth=xx' flags (PBSPro_10).")
-            pbs_params += "#PBS -l mppwidth=%s \n" % jd.total_cpu_count
-        elif 'Version: 5.' in pbs_version:
-            logger.info("Using TORQUE 5.x notation '#PBS -l procs=XX' ")
-            pbs_params += "#PBS -l procs=%d\n" % jd.total_cpu_count
-        else:
-            logger.info("Using Cray XT (e.g. Kraken, Jaguar) specific '#PBS -l size=xx' flags (TORQUE).")
-            pbs_params += "#PBS -l size=%s\n" % jd.total_cpu_count
+
+    # the following code tried to support numerous special cases and old versions of PBS
+    # most of this isn't relevant to CIRRUS and it gets easily confused, so the whole block is commented out,
+    # followed by the small amount of code we need to run on CIRRUS
+
+    # start of commented out block
+    #if is_cray is not "":
+    #    # Special cases for PBS/TORQUE on Cray. Different PBSes,
+    #    # different flags. A complete nightmare...
+    #    if 'PBSPro_10' in pbs_version:
+    #        logger.info("Using Cray XT (e.g. Hopper) specific '#PBS -l mppwidth=xx' flags (PBSPro_10).")
+    #        pbs_params += "#PBS -l mppwidth=%s \n" % jd.total_cpu_count
+    #    elif 'PBSPro_12' in pbs_version:
+    #        logger.info("Using Cray XT (e.g. Archer) specific '#PBS -l select=xx' flags (PBSPro_12).")
+    #        pbs_params += "#PBS -l select=%d\n" % nnodes
+    #    elif '4.2.6' in pbs_version:
+    #        logger.info("Using Titan (Cray XP) specific '#PBS -l nodes=xx'")
+    #        pbs_params += "#PBS -l nodes=%d\n" % nnodes
+    #    elif '4.2.7' in pbs_version:
+    #        logger.info("Using Cray XT @ NERSC (e.g. Edison) specific '#PBS -l mppwidth=xx' flags (PBSPro_10).")
+    #        pbs_params += "#PBS -l mppwidth=%s \n" % jd.total_cpu_count
+    #    elif 'Version: 5.' in pbs_version:
+    #        logger.info("Using TORQUE 5.x notation '#PBS -l procs=XX' ")
+    #        pbs_params += "#PBS -l procs=%d\n" % jd.total_cpu_count
+    #    else:
+    #        logger.info("Using Cray XT (e.g. Kraken, Jaguar) specific '#PBS -l size=xx' flags (TORQUE).")
+    #        pbs_params += "#PBS -l size=%s\n" % jd.total_cpu_count
     #elif 'version: 2.3.13' in pbs_version: # Blacklight
     #    pbs_params += "#PBS -l ncpus=%d\n" % ncpus
     #elif 'version: 14.2.5' in pbs_version: # Cheyenne
@@ -344,20 +341,20 @@ def _pbscript_generator(url, logger, jd, ppn, gres, pbs_version, is_cray=False,
     #elif 'PBSPro_13' in pbs_version:
     #    logger.info("Using PBSPro 13 notation '#PBS -l select=XX' ")
     #    pbs_params += "#PBS -l select=%d\n" % (nnodes)
-    elif '14.2.7' in pbs_version:
+    #elif '14.2.7' in pbs_version:
         # Identified Cirrus!!"
         # as per Cirrus recommendations, reserve entire nodes
         # no way to directly specify this through SAGA directives
-        pbs_params += "#PBS -l place=excl\n"
+    #    pbs_params += "#PBS -l place=scatter:excl\n"
         # specific stuff for EPCC Cirrus
         # if total number of cpus is less than or equal to cpus on a single node,
         # then use total number of cpus.
         # otherwise use ppn
-        if jd.total_cpu_count <= ppn:
-              pbs_params += "#PBS -l select=%d:ncpus=%d\n" % (nnodes, jd.total_cpu_count)
+    #    if jd.total_cpu_count <= ppn:
+    #          pbs_params += "#PBS -l select=%d:ncpus=%d\n" % (nnodes, jd.total_cpu_count)
 
-        else:
-            pbs_params += "#PBS -l select=%d:ncpus=%d\n" % (nnodes, ppn)
+    #   else:
+    #        pbs_params += "#PBS -l select=%d:ncpus=%d\n" % (nnodes, ppn)
 
         # abuse the SAGA spec to pass CIRRUS-specific arguments in spmd_variation
         #if jd.spmd_variation != None:
@@ -371,6 +368,18 @@ def _pbscript_generator(url, logger, jd, ppn, gres, pbs_version, is_cray=False,
 
         #pbs_params += "#PBS -l nodes=%d:ppn=%d%s\n" % (
         #   nnodes, ppn, ''.join([':%s' % prop for prop in node_properties]))
+    # end of commented out block
+
+    # specific stuff for EPCC Cirrus
+    pbs_params += "#PBS -l place=scatter:excl\n"
+
+    # if total number of cpus is less than or equal to cpus on a single node,
+    # then use total number of cpus.
+    # otherwise use ppn
+    if jd.total_cpu_count <= ppn:
+        pbs_params += "#PBS -l select=%d:ncpus=%d\n" % (nnodes, jd.total_cpu_count)
+    else:
+        pbs_params += "#PBS -l select=%d:ncpus=%d\n" % (nnodes, ppn)
 
     # Process Generic Resource specification request
     if gres:
@@ -385,7 +394,7 @@ def _pbscript_generator(url, logger, jd, ppn, gres, pbs_version, is_cray=False,
     pbscript = "\n#!/bin/bash \n%s%s" % (pbs_params, exec_n_args)
 
     pbscript = pbscript.replace('"', '\\"')
-    print pbscript
+    logger.info(pbscript)
 
 
     return pbscript
@@ -675,6 +684,9 @@ class PBSProJobService (saga.adaptors.cpi.job.Service):
             self._logger.debug("Using user specified 'ppn': %d" % self.ppn)
             return
 
+        # the following block tried to support old PBS versions,
+        # and unfornately gets confused by the version number returned by CIRRUS,
+        # so it is commented out and we do the right thing for CIRRUS
         # TODO: this is quite a hack. however, it *seems* to work quite
         #       well in practice.
         #if any(ver in self._commands['qstat']['version'] for ver in ('PBSPro_13', 'PBSPro_12', 'PBSPro_11.3')):
@@ -693,7 +705,6 @@ class PBSProJobService (saga.adaptors.cpi.job.Service):
             # this is black magic. we just assume that the highest occurrence
             # of a specific np is the number of processors (cores) per compute
             # node. this equals max "PPN" for job scripts
-            print(out)
             ppn_list = dict()
             for line in out.split('\n'):
                 np = line.split(' = ')
@@ -710,7 +721,6 @@ class PBSProJobService (saga.adaptors.cpi.job.Service):
             self.ppn = max(ppn_list, key=ppn_list.get)
             self._logger.debug("Found the following 'ppn' configurations: %s. "
                 "Using %s as default ppn."  % (ppn_list, self.ppn))
-        print(self.ppn)
 
     # ----------------------------------------------------------------
     #
@@ -889,13 +899,13 @@ class PBSProJobService (saga.adaptors.cpi.job.Service):
         # run the PBS 'qstat' command to get some infos about our job
         # TODO: create a PBSPRO/TORQUE flag once
 
-        if 'PBSPro_1' in self._commands['qstat']['version']:
-            qstat_flag = '-fx'
-        else:
-            qstat_flag ='-f1'
+        # the script gets confused here, so hard code the qstat flag to -fx to support CIRRUS
+        #if 'PBSPro_1' in self._commands['qstat']['version']:
+        #    qstat_flag = '-fx'
+        #else:
+        #    qstat_flag ='-f1'
 
         qstat_flag = '-fx'
-        print qstat_flag
         ret, out, _ = self.shell.run_sync("unset GREP_OPTIONS; %s %s %s | "
                 "grep -E -i '(job_state)|(Job_Name)|(exec_host)|(exit_status)|"
                  "(ctime)|(start_time)|(stime)|(mtime)'"
@@ -1385,5 +1395,7 @@ class PBSProJob (saga.adaptors.cpi.job.Job):
         """ implements saga.adaptors.cpi.job.Job.get_execution_hosts()
         """
         return self.jd
+
+
 
 

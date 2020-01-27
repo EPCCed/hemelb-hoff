@@ -40,9 +40,7 @@ from saga_utils import stage_output_files, cleanup_directory
 from werkzeug.utils import secure_filename
 import shutil
 import re
-from remote_command import run_remote_command
 from logging.config import dictConfig
-import json
 
 from wos_utils import s3_upload, s3_list_files_for_job, get_presigned_url, s3_delete_files_for_job
 
@@ -53,22 +51,6 @@ POWERUSER_ROLE = 'poweruser'
 
 scheduler = BackgroundScheduler()
 
-# configure the logger
-#dictConfig({
-#    'version': 1,
-#    'formatters': {'default': {
-#        'format': '[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
-#    }},
-#    'handlers': {'wsgi': {
-#        'class': 'logging.StreamHandler',
-#        'stream': 'ext://flask.logging.wsgi_errors_stream',
-#        'formatter': 'default'
-#    }},
-#    'root': {
-#        'level': 'INFO',
-#        'handlers': ['wsgi']
-#    }
-#})
 
 dictConfig({
     'version': 1,
@@ -109,6 +91,13 @@ admin = Admin(app, name='HemelB Offload Service', template_mode='bootstrap3', ba
 app.config['SECRET_KEY'] = SECRET_KEY
 app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
 db = SQLAlchemy(app)
+
+# TODO:
+# if we're using the WOS, should test the setup before we do anything else
+if USE_WOS == True:
+    app.logger.info("App is configured to use the Web Object Scalar")
+else:
+    app.logger.info("App is configured to use the local file system")
 
 
 # Define models

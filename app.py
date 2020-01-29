@@ -43,6 +43,7 @@ import re
 from logging.config import dictConfig
 
 from wos_utils import s3_upload, s3_list_files_for_job, get_presigned_url, s3_delete_files_for_job
+import urllib3
 
 # role definitions
 SUPERUSER_ROLE = 'superuser'
@@ -79,7 +80,8 @@ dictConfig({
     }
 })
 
-
+# saga stuff can sometimes timeout on ssh, so increase the margin
+os.environ['SAGA_PTY_SSH_TIMEOUT']='120'
 
 app = Flask(__name__, static_url_path=APP_STATIC_URL)
 app.config.from_pyfile('config.py')
@@ -98,6 +100,10 @@ if USE_WOS == True:
     app.logger.info("App is configured to use the Web Object Scalar")
 else:
     app.logger.info("App is configured to use the local file system")
+
+# possibly a bad idea, but don't want the log full of certificate warnings
+urllib3.disable_warnings()
+
 
 
 # Define models

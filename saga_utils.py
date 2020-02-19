@@ -76,12 +76,22 @@ def stage_input_files(job_id, local_input_file_dir, service):
 
 
         for f in os.listdir(local_input_file_dir):
-            transfertarget = service['file_url'] + REMOTE_WORKING_DIR + "/" + str(job_id) + "/" + f
-            transfersource = os.path.join(local_input_file_dir, f)
-            out = saga.filesystem.File(transfersource, session=session)
-            out.copy(transfertarget)
+            transfertarget = service['file_url'] + REMOTE_WORKING_DIR + str(job_id) + "/" + f
+            transfersource = 'sftp://localhost' + os.path.join(local_input_file_dir, f)
+
+            print(transfersource)
+            print(os.path.getsize(os.path.join(local_input_file_dir, f)))
+            print(transfertarget)
+
+
+            dir.copy(transfersource, transfertarget)
+
+            #print("Job " + job_id + " copying from " + transfersource + " to " + transfertarget)
+            #out = saga.filesystem.File(transfersource, session=session)
+            #out.copy(transfertarget)
 
         dir.close()
+
         return 0
 
     except saga.SagaException as ex:
@@ -103,6 +113,7 @@ def submit_saga_job(job_description, service):
         # we use a UID here, but any unique identifer would work
 
         REMOTE_WORKING_DIR = os.path.join(service['working_directory'], str(job_description['local_job_id']))
+        #print(REMOTE_WORKING_DIR)
 
 
         # Create a job service object pointing at our host

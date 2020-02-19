@@ -723,9 +723,18 @@ def add_file_to_job(id):
     if int(r['user_id']) != int(current_user.get_id()):
         abort(403)
 
+    print("Uploading files for job " + local_job_id)
+
     for f in request.files:
         file = request.files[f]
-        file.save(os.path.join(INPUT_STAGING_AREA, local_job_id, secure_filename(f)))
+        print(f)
+        file_path = os.path.join(INPUT_STAGING_AREA, local_job_id, secure_filename(f))
+        print("upload path is " + file_path)
+        file.save(file_path)
+        try:
+            print(os.path.getsize(file_path))
+        except Exception as e:
+            print(e)
 
     return 'Success', 200, {'Content-Type': 'text/plain'}
 
@@ -811,14 +820,15 @@ def delete_job(id):
 
         # check ownership of the job
         cmd = "SELECT user_id, service_id, remote_job_id, state, retrieved FROM JOB WHERE local_job_id = :local_job_id"
-        result = db.engine.execute(text(cmd), local_job_id = id)
+        result = db.engine.execute(text(cmd), local_job_id=id)
         r = result.fetchone()
         if r is None:
-            abort(404)
+            return "Resource not found", 404, {'Content-Type': 'text/plain'}
 
         if int(r['user_id']) != int(current_user.get_id()):
             if not ( current_user.has_role(SUPERUSER_ROLE)):
-                abort(403)
+                return "Permission Denied", 403, {'Content-Type': 'text/plain'}
+
 
         # if the job is already set as deleted, ignore this request
         if r['state'] == 'DELETED':
